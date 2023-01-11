@@ -30,7 +30,7 @@
     "front-matter": "^4.0.2",
     "js-yaml": "^4.1.0",
     "pathlib": "^0.1.2",
-    "puppeteer": "^19.4.1",
+    "puppeteer": "^19.5.0",
     "util": "^0.12.5",
     "yaml": "^2.2.0"
   },
