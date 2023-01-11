@@ -13,15 +13,19 @@ import {
 	Setting,
 	TFile
 } from 'obsidian';
+import {es2017_object} from "@typescript-eslint/scope-manager/dist/lib/es2017.object";
 
+
+
+const yaml = require('js-yaml');
 const fronty = require('front-matter');
 const pathLib = require('pathlib');
+const YML = require('yaml');
 
-
-import ListCalloutsPlugin from 'obsidian_plugins/obsidian-list-callouts/main';
-import {ListCalloutSettings} from "./obsidian_plugins/obsidian-list-callouts/settings";
-import {buildPostProcessor} from "./obsidian_plugins/obsidian-list-callouts/postProcessor";
-import {calloutExtension, calloutsConfigField} from "./obsidian_plugins/obsidian-list-callouts/extension";
+//import ListCalloutsPlugin from 'obsidian_plugins/obsidian-list-callouts/main';
+//import {ListCalloutSettings} from "./obsidian_plugins/obsidian-list-callouts/settings";
+//import {buildPostProcessor} from "./obsidian_plugins/obsidian-list-callouts/postProcessor";
+//import {calloutExtension, calloutsConfigField} from "./obsidian_plugins/obsidian-list-callouts/extension";
 const prompt = require('electron-prompt');
 
 // Remember to rename these classes and interfaces!
@@ -31,6 +35,13 @@ interface MyPluginSettings {
 	glossaryTesterCardsPerSession: number;
 	glossaryTesterPrioritizeCardsOlderThanDays: number;
 	glossaryTestTagsToFilter: string;
+	freestyleTestTagsToFilter: string;
+	freestyleTesterCardsPerSession: number;
+	freestyleTesterPrioritizeCardsOlderThanDays: number;
+	findReplaceTagsToFilter: string;
+	findReplaceFrontmatterPropertyNamesOriginal: string;
+	findReplaceFrontmatterPropertyNamesNew: string;
+	findReplaceFrontmatterValuesNew: string;
 }
 
 
@@ -38,21 +49,52 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 	mySetting: 'default',
 	glossaryTesterCardsPerSession: 15,
 	glossaryTesterPrioritizeCardsOlderThanDays: 10,
-	glossaryTestTagsToFilter: ""
+	glossaryTestTagsToFilter: "",
+	freestyleTestTagsToFilter: "",
+	freestyleTesterCardsPerSession: 15,
+	freestyleTesterPrioritizeCardsOlderThanDays: 10,
+	findReplaceTagsToFilter: "",
+	findReplaceFrontmatterPropertyNamesOriginal: "",
+	findReplaceFrontmatterPropertyNamesNew: "",
+	findReplaceFrontmatterValuesNew: ""
 }
+
+var foodIntakeTrackerInstance: FoodIntakeTracker;
 
 var glossaryTesterInstance: GlossaryTester;
 
 var mikielPlugin: MyPlugin;
 
+
 var mikielPluginSettings: any;
+
+var apiInstance: MikielAPI;
+
+// @ts-ignore
+window.mikielAPI = function(e: string) {
+
+	apiInstance = new MikielAPI(mikielPluginSettings.app);
+	return apiInstance;
+	//apiInstance.myTestMethod();
+}
 
 // @ts-ignore
 window.revealCorrectGlossary = function (obj) {
 	glossaryTesterInstance.revealCorrectGlossary(false);
 }
 
-
+// @ts-ignore
+window.freestyleTextAreaOnFocus = function(textAreaObj, idx) {
+	console.log(textAreaObj);
+	let textAreaControls = document.querySelectorAll('.freestyle-answer-controls');
+	for(let i = 0; i < textAreaControls.length; i++) {
+			textAreaControls[i].classList.add('hidden');
+	}
+	let currentTextAreaControl = document.querySelector(`.${idx}`);
+	if(currentTextAreaControl) {
+		currentTextAreaControl.classList.remove('hidden');
+	}
+}
 // @ts-ignore
 window.glossaryMaskMode = function (obj) {
 	glossaryTesterInstance.glossaryMaskMode(obj);
@@ -116,6 +158,129 @@ window.revealCorrectAnswers = function( ){
 
 }
 
+
+interface FoodItem {
+	time: string;
+	food_item: string;
+	quantity: number;
+}
+
+
+const DEFAULT_FOODITEM: FoodItem = {
+	time: '0000',
+	food_item: '',
+	quantity: 0
+}
+
+class MikielAPI {
+	/**
+	 * retrieve the instance of class FoodIntakeTracker
+	 */
+	get foodIntakeTrackerInstance(): FoodIntakeTracker {
+		return this._foodIntakeTrackerInstance;
+	}
+
+	/**
+	 * set the instance for class FoodIntakeTracker
+	 */
+	set foodIntakeTrackerInstance(value: FoodIntakeTracker) {
+		this._foodIntakeTrackerInstance = value;
+	}
+	get app(): App {
+		return this._app;
+	}
+
+	set app(value: App) {
+		this._app = value;
+	}
+
+	private _app: App;
+
+	private _foodIntakeTrackerInstance: FoodIntakeTracker;
+
+	constructor(app: App) {
+		console.log('app', app);
+		this._app = app;
+		this.foodIntakeTrackerInstance = new FoodIntakeTracker(this.app);
+	}
+
+	/**
+	 * getListOfFoodsConsumedOnGivenDate
+	 *
+	 * This method will return an array of food items logged on the specified date
+	 *   {
+     *		"0": {
+     *		"time": 730,
+	 *		"food_item": "Wild Salmon Caviar",
+	 *		"quantity": 30
+	 *		},
+	 *		"1": {
+	 *		"time": 730,
+	 *		"food_item": "Smoked Ham",
+	 *		"quantity": 40
+	 *		},
+	 *		...
+	 *		...
+	 *	}
+	 *
+	 * @param foodIntakeDate - must be in the format YYYY-MM--DD
+	 */
+	async getListOfFoodsConsumedOnGivenDate(foodIntakeDate: string): Promise<object> {
+		const foodIntakeFrontmatterRoot = "food_intake_tracker";
+		foodIntakeDate = foodIntakeDate.trim();
+		// TODO sanitize input to conform to YYYY-MM--DD format
+
+		let foodIntake: object = {};
+		let fmc = await this.foodIntakeTrackerInstance.getListOfFoodsConsumedOnGivenDate(foodIntakeDate);
+		if(fmc && fmc[foodIntakeFrontmatterRoot]) {
+			foodIntake = fmc[foodIntakeFrontmatterRoot];
+
+		}
+
+		return foodIntake;
+	}
+
+	/**
+	 * getMacrosConsumedOnGivenDate
+	 *
+	 * This method will return an object of macros for food items logged on the specified date
+	 *
+	 * @param macrosIntakeDate - must be in the format YYYY-MM--DD
+	 */
+	async getMacrosConsumedOnGivenDate(macrosIntakeDate: string) : Promise<object>{
+		const foodItemDefaults = DEFAULT_FOODITEM;
+
+		let foodItems : any = await this.getListOfFoodsConsumedOnGivenDate(macrosIntakeDate);
+		let foodMacros: Array<object> = [];
+		let foodItemIndex : any;
+		for(foodItemIndex in foodItems) {
+			let foodItem : FoodItem = foodItems[foodItemIndex];
+			console.log(foodItem);
+			foodMacros[foodItemIndex as keyof object] = await this.foodIntakeTrackerInstance.getMacrosForGivenFoodItem(foodItem["food_item"]);
+		}
+		return foodMacros;
+	}
+
+	/**
+	 * Return text from given file path
+	 *
+	 * @param filePath
+	 */
+	async readTextFromFilePath(filePath: string) {
+
+		let fileContent = 'File not found!';
+		let existingFile = this.app.vault.getAbstractFileByPath(filePath);
+		if(existingFile) {
+			// @ts-ignore
+			fileContent = await this.app.vault.read(existingFile);
+		}
+		return fileContent;
+	}
+
+	myTestMethod () {
+		console.log("this is my test api mmethod")
+	}
+}
 
 export default class MyPlugin extends Plugin {
 	settings: MyPluginSettings;
@@ -216,9 +381,9 @@ export default class MyPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		let myCallout = new ListCalloutsPluginOverride(this.app, this.manifest);
+		//let myCallout = new ListCalloutsPluginOverride(this.app, this.manifest);
 
-		myCallout.testMe();
+		//myCallout.testMe();
 
 		// This creates an icon in the left ribbon.
 		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
@@ -232,6 +397,9 @@ export default class MyPlugin extends Plugin {
 		const statusBarItemEl = this.addStatusBarItem();
 		statusBarItemEl.setText('Status Bar Text');
 
+
+
+
 		// This adds a simple command that can be triggered anywhere
 		this.addCommand({
 			id: 'mikiel-modal-simple',
@@ -242,7 +410,33 @@ export default class MyPlugin extends Plugin {
 		});
 
 		/**
-		 * This command lists entire glossary oand outputs to console
+		 * This command lists entire glossary ond outputs to console
+		 */
+		this.addCommand({
+			id: 'mikiel-frontmatter-replace',
+			name: 'Replace Frontmatter Paths',
+			callback: async () => {
+				glossaryTesterInstance = new GlossaryTester(this.app, [], [], '');
+				console.log(`findReplaceTagsToFilter: ${mikielPluginSettings.plugin.settings.findReplaceTagsToFilter}`)
+				let tagArr = mikielPluginSettings.plugin.settings.findReplaceTagsToFilter.split(',');
+				tagArr.forEach((tag: string, idx: number) => {
+					tagArr[idx] = tag.trim();
+				});
+				let propArr = mikielPluginSettings.plugin.settings.findReplaceFrontmatterPropertyNamesOriginal.split(',');
+				propArr.forEach((prop: string, idx: number) => {
+					propArr[idx] = prop.trim();
+				});
+				let newPropArr = mikielPluginSettings.plugin.settings.findReplaceFrontmatterPropertyNamesNew.split(',');
+				newPropArr.forEach((newProp: string, idx: number) => {
+					newPropArr[idx] = newProp.trim();
+				});
+				console.log(tagArr, propArr, newPropArr);
+				await glossaryTesterInstance.updateFrontmatterFieldInFilePath('', tagArr, propArr, newPropArr);
+			}
+		});
+
+		/**
+		 * This command lists entire glossary ond outputs to console
 		 */
 		this.addCommand({
 			id: 'mikiel-glossary-list',
@@ -255,7 +449,19 @@ export default class MyPlugin extends Plugin {
 		});
 
 		/**
-		 * This command lists entire glossary oand outputs to console
+		 * This command processess the Food Intake Tracker
+		 */
+		this.addCommand({
+			id: 'mikiel-food-intake-tracker',
+			name: 'Mikiel Food Intake Tracker',
+			callback: async () => {
+				foodIntakeTrackerInstance = new FoodIntakeTracker(this.app);
+				await foodIntakeTrackerInstance.processCurrentNoteFoodIntake();
+			}
+		});
+
+		/**
+		 * This command lists entire glossary ond outputs to console
 		 */
 		this.addCommand({
 			id: 'mikiel-glossary-reset-next-testing-date',
@@ -277,13 +483,24 @@ export default class MyPlugin extends Plugin {
 			}
 		});
 
+		/**
+		 * This command opens the Freestyle Testing Modal
+		 */
+		this.addCommand({
+			id: 'mikiel-modal-freestyle-trainer',
+			name: 'Freestyle Trainer Window',
+			callback: () => {
+				// @ts-ignore
+				glossaryTesterInstance = new GlossaryTester(this.app, ["term","tags","memorisation_hints", "recall_attempt_count","recall_success_count", "recall_score"], ["Official Course Notes", "Concise Definition"], 'FREESTYLE');
+				glossaryTesterInstance.open();
+			}
+		});
 
 		// This adds an editor command that can perform some operation on the current editor instance
 		this.addCommand({
 			id: 'sample-editor-command',
 			name: 'Sample editor command',
 			editorCallback: (editor: Editor, view: MarkdownView) => {
-
 				editor.replaceSelection('Mikiel');
 			}
 		});
@@ -453,6 +670,274 @@ export default class MyPlugin extends Plugin {
 
 }
 
+
+
+
+interface FoodMacro {
+	name: string;
+	amount: number;
+}
+
+
+const DEFAULT_FOODMACRO: FoodMacro = {
+	name: 'Macro Name',
+	amount: 0
+}
+
+/**
+ * FoodIntakeTracker
+ *
+ * This class provides a number of methods related to retrieving and updating logged intake of food
+ *
+ */
+class FoodIntakeTracker {
+
+	get app(): App {
+		return this._app;
+	}
+
+	set app(value: App) {
+		this._app = value;
+	}
+
+	private _app: App;
+
+	constructor(app: App) {
+		this.app = app;
+	}
+
+	/**
+	 * getMacrosForGivenFoodItem
+	 *
+	 *
+	 *
+	 */
+	async getMacrosForGivenFoodItem (foodItemName: string) : Promise<FoodMacro> {
+
+		let foodItemMacro : FoodMacro = DEFAULT_FOODMACRO;
+
+
+
+
+		return foodItemMacro;
+	}
+
+	/**
+	 * getFoodInventoryItemFrontmatter
+	 *
+	 *
+	 */
+	async getFoodInventoryItemFrontmatter(foodItemName: string) : Promise<any> {
+		const foodInventoryFolderPath : string = 'Inventory/Foods/';
+		const foodItemFrontmatterField : string = 'nutritional_information_per_100g';
+
+		let foodItemFrontmatter: object = {};
+		let foodInventoryItemPath = `${foodInventoryFolderPath}${foodItemName.trim()}`;
+		let fmc : object = await this.getFrontmatterSectionFromFilePath(foodInventoryItemPath);
+		if(fmc && fmc[foodItemFrontmatterField as keyof object]) {
+			foodItemFrontmatter = fmc[foodItemFrontmatterField as keyof object];
+		}
+		console.log('========  foodItemFrontmatter  =========');
+		console.log(foodItemFrontmatter);
+		console.log('========  foodItemFrontmatter  =========');
+
+		return foodItemFrontmatter;
+	}
+
+	/**
+	 * updateFrontmatterProperty
+	 *
+	 *
+	 * @param filePath
+	 * @param fields
+	 * @param values
+	 */
+	async updateFrontmatterFoodIntakeProperty(filePath: string, fields: Array<string>, values: Array<string> = [], foodIntakeFrontmatterRootField: string) : Promise<number> {
+
+		let numberOfEntriesUpdate: number = 0;
+		let fileContent: string = "";
+
+
+		let existingFile = this.app.vault.getAbstractFileByPath(filePath);
+
+		if (!(existingFile instanceof TFile)) {
+			return numberOfEntriesUpdate;
+		} else {
+			fileContent = await this.app.vault.read(existingFile);
+		}
+		let metaEndIdx = fileContent.split('---\n');
+
+		let fmc = await this.getFrontmatterSectionFromFilePath(filePath);
+
+		// TODO find alternative way to do this as EVAL is not safe
+
+		eval(`fmc["${foodIntakeFrontmatterRootField}"] = {};`);
+
+
+		console.log(fmc);
+		let testValue = null;
+		let testKey = '';
+		for (let i = 0; i < fields.length; i++) {
+			try {
+				// TODO find alternative way to do this as EVAL is not safe
+				eval(`testValue = fmc${fields[i]};`);
+				eval(`fmc${fields[i]} = '${values[i]}';`);
+				numberOfEntriesUpdate++;
+			} catch (error) {
+				let tmpAr = fields[i].split('[');
+				for (let j = 0; j < tmpAr.length; j++) {
+					let tmpField = tmpAr[j].split(']').join('');
+					tmpField = tmpField.trim();
+
+					if (tmpField && tmpField.length > 0 && typeof eval(`fmc${testKey}`) != 'undefined') {
+						testKey += `[${tmpField}]`;
+						if (typeof eval(`fmc${testKey}`) == 'undefined' && j < (tmpAr.length - 1)) {
+							// TODO find alternative way to do this as EVAL is not safe
+							eval(`fmc${testKey} = {}`);
+							eval(`fmc${fields[i]} = '${values[i]}';`);
+							numberOfEntriesUpdate++;
+						}
+						if ((j == (tmpAr.length - 1))) {
+							testKey = '';
+						}
+					}
+				}
+			}
+		}
+
+
+		const doc = new YML.Document();
+		doc.contents = fmc;
+
+		metaEndIdx[1] = doc.toString();
+
+		metaEndIdx[1] = metaEndIdx[1].replace(/"([\d]+)"/gmi, `$1`);
+		metaEndIdx[1] = metaEndIdx[1].replace(/\n([  ]*)([^\n]+)/gmi, function (match, capture1, capture2) {
+			return `\n${String(' ').repeat(capture1.length / 2)}${capture2}`;
+		});
+		metaEndIdx[1] = metaEndIdx[1].replace(/position:[\W\S]*[ ]{2}offset: [\d]*\n/gm, '');
+		let tmpMetaAr = metaEndIdx[1].split('\n');
+
+		metaEndIdx[1] = `${tmpMetaAr.join('\n')}\n`;
+
+		fileContent = `${metaEndIdx.join('---\n')}`;
+
+		await this.app.vault.modify(existingFile, fileContent);
+
+		return numberOfEntriesUpdate;
+
+	}
+
+	async getFrontmatterSectionFromFilePath (filePath: string) : Promise<object> {
+		let fmc: object = {};
+		let existingFile = this.app.vault.getAbstractFileByPath(filePath);
+		if(existingFile) {
+			// @ts-ignore
+			fmc = this.app.metadataCache.getFileCache(existingFile)?.frontmatter;
+		}
+		return fmc;
+	}
+
+	/**
+	 * Returns a list of food file names consumed on a given day
+	 *
+	 * @param foodIntakeDate - YYYY-MM-DD
+	 */
+	async getListOfFoodsConsumedOnGivenDate(foodIntakeDate: string) {
+		const dailyLogRootPath = 'Day Planners/';
+		// TODO parse and validate date format
+
+		let tmpAr = foodIntakeDate.split('-');
+		let year = tmpAr[0];
+		let month = tmpAr[1];
+		let day = tmpAr[2];
+
+		let filePath = `${dailyLogRootPath}${year}/${year}-${month}/${year}-${month}-${day}.md`;
+
+		let fmc = null;
+		let existingFile = this.app.vault.getAbstractFileByPath(filePath);
+		if(existingFile) {
+			// @ts-ignore
+			fmc = this.app.metadataCache.getFileCache(existingFile)?.frontmatter;
+		}
+		return fmc;
+
+	}
+
+	/**
+	 * processCurrentNoteFoodIntake
+	 *
+	 * goes through all the food entries summarised in the daily log macros table
+	 * transfers this information to the frontmatter meta data
+	 *
+	 * returns number of entries updates
+	 */
+	async processCurrentNoteFoodIntake() : Promise<number> {
+		const foodItemDefaults = DEFAULT_FOODITEM;
+		const foodTrackerFrontmatterAnchor = "food_intake_tracker";
+		const keys = ["time", "food_item", "quantity"];
+
+
+		let foodIntakeData: Array<any> = [];
+		let entriesUpdatedCount : number = 0;
+
+		foodIntakeData = this.getCurrentNoteFoodIntakeData();
+
+
+		const activeFile = this.app.workspace.getActiveFile();
+
+		let fields = [];
+		let values = [];
+
+
+		let keysIdx = 0;
+		for(let f=0; f < (3 * foodIntakeData.length); f++) {
+			fields.push(`["${foodTrackerFrontmatterAnchor}"]["${Math.floor(f / 3)}"]["${keys[keysIdx]}"]`);
+			values.push(foodIntakeData[Math.floor(f / 3)][keysIdx]);
+			if(keysIdx == 2) {
+				keysIdx = 0;
+			}
+			else {
+				keysIdx++;
+			}
+		}
+
+
+		if (activeFile && activeFile.path) {
+			entriesUpdatedCount = await this.updateFrontmatterFoodIntakeProperty(activeFile.path, fields, values, foodTrackerFrontmatterAnchor);
+		}
+    return entriesUpdatedCount;
+	}
+
+	getCurrentNoteFoodIntakeData() {
+		function divisible(dividend: number, divisor: number){
+			if (dividend % divisor == 0) {
+				return dividend;
+			} else {
+				var num = dividend + (divisor-(dividend % divisor));
+				return num;
+			}
+		}
+
+		let foodTableDiv = document.querySelectorAll('.food-intake-section td');
+		let foodIntakeData: Array<any> = [];
+		let row = 0;
+		let tmpArr = [];
+		for(let i = 0; i < foodTableDiv.length; i++) {
+
+			// @ts-ignore
+			tmpArr.push(foodTableDiv[i].innerText);
+			if(i > 0 && (i+1) == divisible((i+1), 3)) {
+				foodIntakeData[row] = tmpArr;
+				tmpArr = [];
+				row++;
+			}
+
+		}
+		return foodIntakeData;
+	}
+}
+
 interface GlossaryAnswers {
 	frontmatter: any;
 	contentInsideHeaders: any;
@@ -465,7 +950,19 @@ interface GlossaryAnswers {
  */
 class GlossaryTester extends Modal {
 	plugin: MyPlugin;
+	/**
+	 * get comma delimited list of tags that wil be used to filter out notes for glossary testing
+	 */
+	get freestyleTestTagsToFilter(): string {
+		return this._freestyleTestTagsToFilter;
+	}
 
+	/**
+	 * set comma delimited list of tags that wil be used to filter out notes for glossary testing
+	 */
+	set freestyleTestTagsToFilter(value: string) {
+		this._freestyleTestTagsToFilter = value;
+	}
 
 	/**
 	 * get comma delimited list of tags that wil be used to filter out notes for glossary testing
@@ -480,6 +977,22 @@ class GlossaryTester extends Modal {
 	set glossaryTestTagsToFilter(value: string) {
 		this._glossaryTestTagsToFilter = value;
 	}
+
+	/**
+	 * get the number of the card that is currently visible
+	 */
+	get currentQuestionNumber(): number {
+		return this._currentQuestionNumber;
+	}
+
+	/**
+	 * set the number of the card that is currently visible
+	 */
+	set currentQuestionNumber(value: number) {
+		this._currentQuestionNumber = value;
+	}
+
+
 
 	get sessionCardsAttemptedCount(): number {
 		return this._sessionCardsAttemptedCount;
@@ -520,12 +1033,12 @@ class GlossaryTester extends Modal {
 		this._intervalTimer = value;
 	}
 
-	get timerCounter(): number {
-		return this._timerCounter;
+	get glossaryTimerCounter(): number {
+		return this._glossaryTimerCounter;
 	}
 
-	set timerCounter(value: number) {
-		this._timerCounter = value;
+	set glossaryTimerCounter(value: number) {
+		this._glossaryTimerCounter = value;
 	}
 
 	get maskMode(): string {
@@ -534,6 +1047,14 @@ class GlossaryTester extends Modal {
 
 	set maskMode(value: string) {
 		this._maskMode = value;
+	}
+
+	get operationalMode(): string {
+		return this._operationalMode;
+	}
+
+	set operationalMode(value: string) {
+		this._operationalMode = value;
 	}
 
 	get maskPercentage(): number {
@@ -594,7 +1115,7 @@ class GlossaryTester extends Modal {
 
 	private _frontMatterVariables: Array<string> = ["term", "tags", "memorisation_hints", "recall_score"];
 
-	private _headerNamesForContent: Array<string> = ["Concise Definition", "This is a test", "Concise Definition"];
+	private _headerNamesForContent: Array<string> = ["Official Course Notes", "Concise Definition", "This is a test", "Concise Definition"];
 
 	private _glossaryData: Array<any> = [];
 
@@ -602,9 +1123,19 @@ class GlossaryTester extends Modal {
 
 	private _maskPercentage: number = 70;
 
-	private _timerCounter: number = 0;
+	private _glossaryTimerCounter: number = 0;
 
 	private _intervalTimer: any = null;
+
+	/**
+	 * _operationalMode
+	 * determines what type of test to generate.
+	 *
+	 * possible values are 'GLOSSARY' and 'FREESTYLE'
+	 * by the default the value us 'GLOSSARY'
+	 * @private
+	 */
+	private _operationalMode: string = 'GLOSSARY';
 
 	/**
 	 * Keeps a score of the number of cards answered correctly during one session
@@ -634,9 +1165,17 @@ class GlossaryTester extends Modal {
 	 */
 	private _glossaryTestTagsToFilter: string = 'nciglossary, glossary';
 
+	/**
+	 * comma delimited list of tags that will be used to filter out notes for glossary testing
+	 */
+	private _freestyleTestTagsToFilter: string = 'freestyletest';
 
+	/**
+	 * the number of the card that is currently visible
+	 */
+	private _currentQuestionNumber: number = 0;
 
-	constructor(app: App, filterableFrontMatter:  Array<string> , headerNames: Array<string>) {
+	constructor(app: App, filterableFrontMatter:  Array<string> , headerNames: Array<string>, trainingMode: string = 'GLOSSARY') {
 		super(app);
 
 		if ( filterableFrontMatter ) {
@@ -647,7 +1186,13 @@ class GlossaryTester extends Modal {
 			this._headerNamesForContent = headerNames;
 		}
 
+		this.glossaryTimerCounter = 0;
+
+		this.operationalMode = trainingMode;
+
 		this.glossaryTestTagsToFilter = mikielPluginSettings.plugin.settings.glossaryTestTagsToFilter;
+
+		this.freestyleTestTagsToFilter = mikielPluginSettings.plugin.settings.freestyleTestTagsToFilter;
 	}
 
 	/**
@@ -728,14 +1273,107 @@ class GlossaryTester extends Modal {
 		return daysToWait;
 
 	}
+
+
 	async listGlossaryTerms() {
 		console.log(this.glossaryData);
 	}
+
 	async getFrontmatterSectionFromFile (file: TFile) {
 
 		let fmc = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		return fmc;
 	}
+
+	/**
+	 *
+	 * replace the value of a specified frontmatter path inside a note within a specified file path
+	 *
+	 * Example for the following frontmatter YAML:
+	 *  ---
+	 *  course: NCI Nutrition Coaching
+	 *  glossary_recall:
+	 *   recall_attempt_count: 4
+	 *   similar_terms:
+	 *    term1: hello
+	 *    term2: goodbye
+	 *  tags: one, two
+	 *  ---
+	 *
+	 *  To change the field "course" to "course_name"
+	 *  await this.updatePropertyInFile(glossaryQuestion['file_path'], 'course', 'course_name');
+	 *
+	 * @param filePath - the path to the file where the substitution will be executed
+	 * @param oldField - array of full names of the fields that will be replaced (excluding tabs and colon)
+	 * @param newField - array of full name of the fields that will replace the specified old field (excluding tabs and colon)
+	 */
+	async updateFrontmatterFieldInFilePath  (filePath: string = '', tags: Array<string> = [], oldFields: Array<string>, newFields: Array<string>) {
+
+
+		let existingFiles = [];
+		const cache = this.app.metadataCache;
+		const files = this.app.vault.getMarkdownFiles();
+		const files_with_tag = [] as TFile [];
+
+		if(filePath != '' && tags.length == 0 ) {
+			existingFiles.push(this.app.vault.getAbstractFileByPath(filePath));
+		}
+		else if(tags.length > 0 ) {
+
+			for(let i = 0; i < tags.length; i++ ) {
+
+				files.forEach( (file) => {
+					const file_cache = cache.getFileCache(file);
+					if(file_cache) {
+						const allTags = getAllTags(file_cache);
+
+
+						if (allTags && allTags.includes(`#${tags[i]}`)) {
+							files_with_tag.push(file);
+							existingFiles.push(this.app.vault.getAbstractFileByPath(file.path));
+						}
+					}
+				});
+
+			}
+
+		}
+		console.log(existingFiles);
+		for(let j= 0; j < existingFiles.length; j++ ) {
+			let fmc = await this.getFrontmatterSectionFromFilePath(files_with_tag[j].path);
+			console.log(fmc, existingFiles[j]);
+			// @ts-ignore
+			let fileContent = await this.app.vault.read(existingFiles[j]);
+			let modifiedFmc = null;
+
+			console.log(fileContent);
+
+
+			for (let i = 0; i < oldFields.length; i++) {
+				fmc = JSON.parse(JSON.stringify(fmc).split(`"${oldFields[i]}":`).join(`"${newFields[i]}":`));
+			}
+			console.log(fmc);
+
+			const YAML = require('yaml');
+
+			const doc = new YAML.Document();
+			// @ts-ignore
+			delete fmc.position;
+			doc.contents = fmc;
+
+			console.log(`---\n${doc.toString()}\n---\n`);
+
+			let fileContentArr = fileContent.split('---\n');
+			console.log(fileContentArr);
+			let modifiedFileContent = `---\n${doc.toString()}---\n`
+			if (fileContentArr[0] == '' && fileContentArr[2]) {
+				modifiedFileContent += fileContentArr[2];
+				// @ts-ignore
+				await this.app.vault.modify(existingFiles[j], modifiedFileContent);
+			}
+		}
+	}
+
 
 	async getFrontmatterSectionFromFilePath (filePath: string) {
 		let fmc = null;
@@ -751,10 +1389,41 @@ class GlossaryTester extends Modal {
 
 	}
 
-	async updatePropertyInFile(filePath: string, field: string, value: string | number = '', action: string = 'UPDATE'): Promise<void> {
-		if(filePath == 'Definitions/beta agonist.md') {
-			console.log(`filePath:${filePath}`);
-		}
+	/**
+	 * updatePropertyInFile
+	 *
+	 * replace the value of a specified frontmatter path inside a note within a specified file path
+	 *
+	 * Example for the following frontmatter YAML:
+	 *  ---
+	 *  course: NCI Nutrition Coaching
+     *  glossary_recall:
+     *   recall_attempt_count: 4
+	 *   similar_terms:
+	 *    term1: hello
+	 *    term2: goodbye
+	 *  tags: one, two
+	 *  ---
+	 *
+	 *  To change the value of "course"
+	 *  await this.updatePropertyInFile(glossaryQuestion['file_path'], 'course', 'New name of the course');
+	 *
+	 *  To change the value of "recall_attempt_count"
+	 *  await this.updatePropertyInFile(glossaryQuestion['file_path'], 'glossary_recall.recall_attempt_count', 5);
+	 *
+	 * limitations:
+	 *  The path cannot be longer than two nodes. This means you will not be able to access or modify
+	 *  glossary_recall.similar_terms.term1
+	 *
+	 * @param filePath
+	 * @param field
+	 * @param value
+	 * @param action
+	 *
+	 * This function returns the file content after the update has been completed
+	 */
+	async updatePropertyInFile(filePath: string, field: string, value: string | number = '', action: string = 'UPDATE'): Promise<string> {
+
 		let variables = field.split('.');
 
 		let file = this.app.vault.getAbstractFileByPath(filePath);
@@ -793,8 +1462,6 @@ class GlossaryTester extends Modal {
 	}
 
 	return fileContent;
-
-
 	}
 
 	async updateFrontmatter (filePath: string, field: string, value: string | number = '') {
@@ -826,6 +1493,36 @@ class GlossaryTester extends Modal {
 		return string.substring(first, string.length - last);
 	}
 
+	/**
+	 * generateFreestyleQuestionCard
+	 *
+	 * Creates html content for a given study material string
+	 *
+	 * @param sourceContent
+	 */
+	generateFreestyleQuestionCard(sourceContent: any,  className: string ='freestyle-answers-table', cardIndex: number = 0) : string {
+
+
+		let placeholder = sourceContent.contentInsideHeaders["Official Course Notes"].split('\n');
+		let htmlContent = `<table class="${className}">`;
+		let sanitized = '';
+		for(let j = 0; j < placeholder.length; j++ ) {
+			sanitized = placeholder[j].split('[[').join('').split(']]').join('');
+			if( sanitized.indexOf('\t-') > -1) {
+				sanitized = sanitized.split('\t- ').join('').split('"').join('&quot;');
+				htmlContent += `<tr class="answer-wrapper"><td><div class="freestyle-answer-controls hidden control-${cardIndex}-${j}"><div title="${sanitized}" class="freestyle-peek">&#128065;</div><div class="freestyle-help">Help</div><div class="freestyle-results"><input type="radio" id="bad" name="result[${j}]" value="bad"><label for="bad">Bad</label><input type="radio" id="good" name="result[${j}]" value="good"><label for="good">Good</label>
+<input type="radio" id="great" name="result[${j}]" value="great"><label for="great">Great</label></div></div><textarea class="freestyle-answer" onclick="window.freestyleTextAreaOnFocus(this, 'control-${cardIndex}-${j}')" id="freestyle_answer_${j}">${sanitized.substring(0 , 5)}...</textarea><input name="answer_status_${j}" class="answer-status" type="hidden" value="xxx" /></td></tr>`;
+			}
+			else {
+				sanitized = sanitized.substring(2 , sanitized.length);
+				htmlContent += `<tr class="prompt-wrapper"><td><div class="glossary-answer" id="glossary_answer_${j}">${sanitized}</div><input name="answer_status_${j}" class="answer-status" type="hidden" value="xxx" /></td></tr>`;
+			}
+		}
+		htmlContent += `</table>`;
+		return htmlContent;
+
+
+	}
 
 	/**
 	 * obfuscateWord
@@ -1021,7 +1718,21 @@ class GlossaryTester extends Modal {
 
 
 	async gotoGlossaryNumber(nextQuestionNumber: string | number, outcome: string, isLastCard: string = 'NO') {
+		let classPrefix = '';
+		switch(this.operationalMode) {
+			case 'GLOSSARY':
+				classPrefix = 'glossary';
+				break;
+			case 'FREESTYLE':
+				classPrefix = 'freestyle';
+				break;
+			default:
+		}
+
+
+
 		let currentQuestionNumber = parseInt(String(Number(nextQuestionNumber) - 1));
+
 		if(outcome == 'START') {
 			currentQuestionNumber = 0;
 		}
@@ -1054,6 +1765,8 @@ class GlossaryTester extends Modal {
 		}
 
 		if(outcome == 'GOOD' || outcome == 'BAD') {
+			this.currentQuestionNumber = currentQuestionNumber + 1;
+
 			this.correctAnswerCount = this.correctAnswerCount + 1;
 			recallAttemptCount = recallAttemptCount + 1;
 			// @ts-ignore
@@ -1062,9 +1775,9 @@ class GlossaryTester extends Modal {
 			await this.updatePropertyInFile(glossaryQuestion['file_path'], 'glossary_recall.recall_attempt_timestamp', new Date().toISOString().slice(0, 19));
 
 			// @ts-ignore
-			await this.updatePropertyInFile(glossaryQuestion['file_path'], 'glossary_recall.recall_time', this.timerCounter);
-			this.sessionDuration += this.timerCounter;
-			this.timerCounter = 0;
+			await this.updatePropertyInFile(glossaryQuestion['file_path'], 'glossary_recall.recall_time', this.glossaryTimerCounter);
+			this.sessionDuration += this.glossaryTimerCounter;
+			this.glossaryTimerCounter = 0;
 			this.sessionCardsAttemptedCount = this.sessionCardsAttemptedCount + 1;
 			if (outcome == 'GOOD') {
 				recallSuccessCount = recallSuccessCount + 1;
@@ -1088,7 +1801,7 @@ class GlossaryTester extends Modal {
 
 
 
-		let introDiv  = document.querySelector('.glossary-intro-panel');
+		let introDiv  = document.querySelector(`.${classPrefix}-intro-panel`);
 
 		if(introDiv) {
 			introDiv.classList.add('hidden');
@@ -1097,7 +1810,7 @@ class GlossaryTester extends Modal {
 		if(isLastCard == 'YES') {
 
 
-			let completionDiv  = document.querySelector('.glossary-completion-panel');
+			let completionDiv  = document.querySelector(`.${classPrefix}-completion-panel`);
 
 			if(completionDiv) {
 				let compDivHtml = completionDiv.innerHTML;
@@ -1107,7 +1820,7 @@ class GlossaryTester extends Modal {
 
 				completionDiv.innerHTML = compDivHtml;
 
-				let lastCardDiv  = document.querySelector(`.glossary-question-wrapper question-number-${(currentQuestionNumber)}`);
+				let lastCardDiv  = document.querySelector(`.${classPrefix}-question-wrapper question-number-${(currentQuestionNumber)}`);
 				if(lastCardDiv) {
 					lastCardDiv.classList.add('hidden');
 				}
@@ -1116,21 +1829,18 @@ class GlossaryTester extends Modal {
 
 		}
 
-		let allQuestions = document.querySelectorAll('.glossary-question-wrapper');
+		let allQuestions = document.querySelectorAll(`.${classPrefix}-question-wrapper`);
 		for(let i = 0; i < allQuestions.length; i++) {
 			allQuestions[i].classList.add('hidden');
 		}
 		let currentQuestion = document.querySelector(`.question-number-${nextQuestionNumber}`);
+		console.log(`current question selector: .question-number-${nextQuestionNumber}`);
+		console.log('currentQuestion', currentQuestion);
 		if(currentQuestion) {
+
 			currentQuestion.classList.remove('hidden');
 		}
-
-
-
 	}
-
-
-
 
 	/**
 	 * parse the contents of the page and return an array
@@ -1226,13 +1936,120 @@ class GlossaryTester extends Modal {
 		this.constructTestFromDefinitions(this.glossaryData);
 	}
 
-	// @ts-ignore
-	generateGlossaryTest(questionAnswerArray, maskMode='SEQUENTIAL_LEFT', maskPercentage= 80) {
+	getSessionCompletionHTML() {
+		let sessionCompleteHTML = ''
+		switch(this.operationalMode) {
+			case 'GLOSSARY':
+				sessionCompleteHTML = `<div class="glossary-completion-panel hidden">
+			<div class="glossary-completion-panel-header">Glossary Tester</div>
+			<div class="glossary-completion-panel-content">You have covered ${mikielPluginSettings.plugin.settings.glossaryTesterCardsPerSession} cards in this session.</div>
+			<div class="glossary-completion-panel-title">Result Summary:</div>
+			<div class="glossary-completion-panel-results">
+				<ul>
+					<li>Number of correct answers: ___CORRECT_ANSWERS___</li>
+					<li>Number of incorrect answers ___INCORRECT_ANSWERS___</li> 
+					<li>Total time of session ___SESSION_DURATION___ seconds</li> 
+				</ul>
+			</div> 
+			<button class="glossary-controls next-question good" onclick="window.gotoGlossaryNumber('1', 'EXIT')">Exit</button>
+			</div>`;
+				break;
+			case 'FREESTYLE':
+				sessionCompleteHTML = `<div class="freestyle-completion-panel hidden">
+			<div class="freestyle-completion-panel-header">Freestyle Tester</div>
+			<div class="freestyle-completion-panel-content">You have covered ${mikielPluginSettings.plugin.settings.glossaryTesterCardsPerSession} cards in this session.</div>
+			<div class="freestyle-completion-panel-title">Result Summary:</div>
+			<div class="freestyle-completion-panel-results">
+				<ul>
+					<li>Number of correct answers: ___CORRECT_ANSWERS___</li>
+					<li>Number of incorrect answers ___INCORRECT_ANSWERS___</li> 
+					<li>Total time of session ___SESSION_DURATION___ seconds</li> 
+				</ul>
+			</div> 
+			<button class="freestyle-controls next-question good" onclick="window.gotoGlossaryNumber('1', 'EXIT')">Exit</button>
+			</div>`;
+				break;
+			default:
 
-		this.maskMode = maskMode;
+		}
+		return sessionCompleteHTML;
+	}
 
-		this.maskPercentage = maskPercentage;
-		const configurationsHTML = `<table class="glossary-test-settings">
+	/**
+	 * getIntroHTML
+	 * generates appropriate introductory card with instructions
+	 * depending on the type of test (glossary, freestyle etc.)
+	 *
+	 * @param tagOptions
+	 */
+	getIntroHTML(tagOptions: string = '') : string {
+		let introHTML = '';
+
+		switch(this.operationalMode) {
+			case 'GLOSSARY':
+				introHTML = `<div class="glossary-intro-panel">
+			<div class="glossary-intro-panel-header">Glossary Tester</div>
+			<div class="glossary-intro-panel-content">This session will display cards that match the hash tags selected below.</div>
+			<div class="glossary-intro-panel-intro">Instructions:</div>
+			<div class="glossary-intro-panel-instructions">
+				<ul>
+					<li>Select the hash tag from the list shown below</li>
+					<li>You can optionally set the number of cards for this session</li>
+					<li>Read the hint</li>
+					<li>Recall the hidden characters</li> 
+					<li>Click on "Check" to confirm the correct response</li> 
+					<li>Click on "Good" to mark the card as correct and proceed to the next card</li>
+					<li>Click on "Bad" to mark the card as incorrect and proceed to the next card</li>		
+				</ul>
+			</div>
+			<select class="glossary-controls tag-selector" onchange="window.glossaryTagSelection(this)">
+			${tagOptions}
+			</select> 
+			<input class="glossary-controls cards-per-session" onchange="window.glossaryCardsPerSessionSelection(this)" type="text" id="cards_per_session" name="cards_per_session" value="${mikielPluginSettings.plugin.settings.glossaryTesterCardsPerSession}" />
+			<button class="glossary-controls next-question good" onclick="window.gotoGlossaryNumber('0', 'START')">START</button>
+			</div>`;
+				break;
+				case 'FREESTYLE':
+					introHTML = `<div class="freestyle-intro-panel">
+			<div class="freestyle-intro-panel-header">Freestyle Recall Tester</div>
+			<div class="freestyle-intro-panel-content">This session will display cards that match the hash tags selected below.</div>
+			<div class="freestyle-intro-panel-intro">Instructions:</div>
+			<div class="freestyle-intro-panel-instructions">
+				<ul>
+					<li>Select the hash tag from the list shown below</li>
+					<li>You can optionally set the number of cards for this session</li>
+					<li>Read the hint</li>
+					<li>Recall the hidden characters</li> 
+					<li>Click on "Check" to confirm the correct response</li> 
+					<li>Click on "Good" to mark the card as correct and proceed to the next card</li>
+					<li>Click on "Bad" to mark the card as incorrect and proceed to the next card</li>		
+				</ul>
+			</div>
+			<select class="freestyle-controls tag-selector" onchange="window.glossaryTagSelection(this)">
+			${tagOptions}
+			</select> 
+			<input class="freestyle-controls cards-per-session" onchange="window.glossaryCardsPerSessionSelection(this)" type="text" id="cards_per_session" name="cards_per_session" value="${mikielPluginSettings.plugin.settings.glossaryTesterCardsPerSession}" />
+			<button class="freestyle-controls next-question good" onclick="window.gotoGlossaryNumber('0', 'START')">START</button>
+			</div>`;
+					break;
+			default:
+		}
+
+	return introHTML;
+
+	}
+
+
+	/**
+	 * Return the appropriate html to display on the intro card
+	 * depending on the mode
+	 */
+	getConfigurationHTML(maskMode: string = '', maskPercentage : number = 90){
+		let configurationsHTML = '';
+
+		switch(this.operationalMode) {
+			case 'GLOSSARY':
+				configurationsHTML = `<table class="glossary-test-settings">
   <tr>
   <td>
   <span class="glossary-settings-label">Mask Percentage:</span>
@@ -1260,7 +2077,77 @@ class GlossaryTester extends Modal {
       </td>
       </tr>
       </table>`;
+				break;
+			case 'FREESTYLE':
+				configurationsHTML = `<table class="freestyle-test-settings">
+  <tr>
+  <td>
+  <span class="freestyle-settings-label">Mask Percentage:</span>
+  </td>
+  <td>This is freestyle mode
+      </td>
+      </tr>
+      <tr>
+      <td>
+      <span class="glossary-settings-label">Mask Percentage:</span>
+  </td>
+  <td>
+  <input class="glossary-settings-input" type="text" value="${maskPercentage}" id="mask_percent" onchange="window.glossaryMaskPercentage(this)" />
+      </td>
+      </tr>
+      </table>`;
+				break;
+			default:
+		}
 
+		return configurationsHTML;
+	}
+
+	/**
+	 *
+	 * @param questionAnswer
+	 * @param maskMode
+	 * @param maskPercentage
+	 */
+	getCardContents(questionAnswer: any, maskMode: string = '', maskPercentage: number = 90 , cardNumber: number = 0) : string {
+		let htmlContent = '';
+		switch(this.operationalMode) {
+			case "GLOSSARY":
+
+				htmlContent += this.obfuscateWord(questionAnswer.frontmatter.term, maskMode, maskPercentage);
+
+				htmlContent += this.obfuscateWord(questionAnswer.frontmatter.term, 'SEQUENTIAL_LEFT', 0, 'glossary-answers-correct hidden');
+
+				break;
+			case "FREESTYLE":
+				htmlContent += this.generateFreestyleQuestionCard(questionAnswer,'freestyle-answers-table', cardNumber);
+				break;
+			default:
+		}
+	return htmlContent;
+	}
+
+
+
+	// @ts-ignore
+	generateGlossaryTest(questionAnswerArray, maskMode='SEQUENTIAL_LEFT', maskPercentage= 80) {
+
+		let classPrefix = '';
+		switch(this.operationalMode) {
+			case 'GLOSSARY':
+				classPrefix = 'glossary';
+				break;
+			case 'FREESTYLE':
+				classPrefix = 'freestyle';
+				break;
+			default:
+		}
+
+		this.maskMode = maskMode;
+
+		this.maskPercentage = maskPercentage;
+
+		const configurationsHTML = this.getConfigurationHTML(maskMode, maskPercentage);
 		let tagOptions = '';
 		let tagOptionArray = this.getFormattedFilterTags(true);
 		console.log('tagOptionArray', tagOptionArray);
@@ -1270,59 +2157,26 @@ class GlossaryTester extends Modal {
 		}
 		this.glossaryTestTagsToFilter = tagOptionArray[0];
 		let html = document.createElement('div');
-		html.classList.add("glossary-wrapper");
+		html.classList.add(`${classPrefix}-wrapper`);
 		let htmlContent = '';
 
-		const introHTML = `<div class="glossary-intro-panel">
-			<div class="glossary-intro-panel-header">Glossary Tester</div>
-			<div class="glossary-intro-panel-content">This session will display cards that match the hash tags selected below.</div>
-			<div class="glossary-intro-panel-intro">Instructions:</div>
-			<div class="glossary-intro-panel-instructions">
-				<ul>
-					<li>Select the hash tag from the list shown below</li>
-					<li>You can optionally set the number of cards for this session</li>
-					<li>Read the hint</li>
-					<li>Recall the hidden characters</li> 
-					<li>Click on "Check" to confirm the correct response</li> 
-					<li>Click on "Good" to mark the card as correct and proceed to the next card</li>
-					<li>Click on "Bad" to mark the card as incorrect and proceed to the next card</li>		
-				</ul>
-			</div>
-			<select class="glossary-controls tag-selector" onchange="window.glossaryTagSelection(this)">
-			${tagOptions}
-			</select> 
-			<input class="glossary-controls cards-per-session" onchange="window.glossaryCardsPerSessionSelection(this)" type="text" id="cards_per_session" name="cards_per_session" value="${mikielPluginSettings.plugin.settings.glossaryTesterCardsPerSession}" />
-			<button class="glossary-controls next-question good" onclick="window.gotoGlossaryNumber('0', 'START')">START</button>
-			</div>`;
-
-		const sessionCompletionHTML = `<div class="glossary-completion-panel hidden">
-			<div class="glossary-completion-panel-header">Glossary Tester</div>
-			<div class="glossary-completion-panel-content">You have covered ${mikielPluginSettings.plugin.settings.glossaryTesterCardsPerSession} cards in this session.</div>
-			<div class="glossary-completion-panel-title">Result Summary:</div>
-			<div class="glossary-completion-panel-results">
-				<ul>
-					<li>Number of correct answers: ___CORRECT_ANSWERS___</li>
-					<li>Number of incorrect answers ___INCORRECT_ANSWERS___</li> 
-					<li>Total time of session ___SESSION_DURATION___ seconds</li> 
-				</ul>
-			</div> 
-			<button class="glossary-controls next-question good" onclick="window.gotoGlossaryNumber('1', 'EXIT')">Exit</button>
-			</div>`;
+		const introHTML = this.getIntroHTML(tagOptions);
 
 
 		htmlContent += introHTML;
 		for(let i = 0; i < questionAnswerArray.length; i++ ) {
 
 			let hint = '';
-			if( questionAnswerArray[i].frontmatter && questionAnswerArray[i].frontmatter.memorisation_hints) {
+			if( this.operationalMode == 'GLOSSARY' && questionAnswerArray[i].frontmatter && questionAnswerArray[i].frontmatter.memorisation_hints) {
 				hint = questionAnswerArray[i].frontmatter.memorisation_hints;
 			}
+			else if( this.operationalMode == 'FREESTYLE' && questionAnswerArray[i].frontmatter && questionAnswerArray[i].frontmatter.chapter_section) {
+				hint = questionAnswerArray[i].frontmatter.chapter_section;
+			}
 
-			htmlContent += `<div class="glossary-question-wrapper question-number-${i} hidden" data-questionumber="${i}"><div class="glossary-question" id="glossary_question_${i}">${hint}</div>`;
+			htmlContent += `<div class="${classPrefix}-question-wrapper question-number-${i} hidden" data-questionumber="${i}"><div class="${classPrefix}-question" id="${classPrefix}_question_${i}">${hint}</div>`;
 
-			htmlContent += this.obfuscateWord(questionAnswerArray[i].frontmatter.term, maskMode, maskPercentage);
-
-			htmlContent += this.obfuscateWord(questionAnswerArray[i].frontmatter.term, 'SEQUENTIAL_LEFT', 0, 'glossary-answers-correct hidden');
+			htmlContent += this.getCardContents(questionAnswerArray[i], maskMode, maskPercentage, i);
 			let gotoPrevious = -1;
 			if(i > 0) {
 				gotoPrevious = i - 1;
@@ -1335,18 +2189,28 @@ class GlossaryTester extends Modal {
 			}
 			console.log(`gotoNext: ${gotoNext} , questionAnswerArray.length: ${questionAnswerArray.length}, i: ${i}`)
 			htmlContent += configurationsHTML;
-			htmlContent += `<div class="glossary-status-bar"><span class="glossary-timer-box">0</span><span class="glossary-progress-box">0</span></div><div class="glossary-controls-wrapper"><button class="glossary-controls previous-question" onclick="window.gotoGlossaryNumber('${gotoPrevious}')">Previous</button><button class="glossary-controls check-answer" data-glossarynumber="${i}" onclick="window.revealCorrectGlossary(this)" >Check</button><button class="glossary-controls next-question bad" onclick="window.gotoGlossaryNumber('${gotoNext}', 'BAD', '${lastCard}')">Bad</button><button class="glossary-controls next-question good" onclick="window.gotoGlossaryNumber('${gotoNext}', 'GOOD', '${lastCard}')">Good</button></div>`
+			htmlContent += `<div class="glossary-status-bar"><span class="glossary-timer-box question-number-${i}">0</span><span class="glossary-progress-box">0</span></div><div class="glossary-controls-wrapper"><button class="glossary-controls previous-question" onclick="window.gotoGlossaryNumber('${gotoPrevious}')">Previous</button><button class="glossary-controls check-answer" data-glossarynumber="${i}" onclick="window.revealCorrectGlossary(this)" >Check</button><button class="glossary-controls next-question bad" onclick="window.gotoGlossaryNumber('${gotoNext}', 'BAD', '${lastCard}')">Bad</button><button class="glossary-controls next-question good" onclick="window.gotoGlossaryNumber('${gotoNext}', 'GOOD', '${lastCard}')">Good</button></div>`
 			htmlContent += `</div>`
 		}
 
-		htmlContent += sessionCompletionHTML;
+		htmlContent += this.getSessionCompletionHTML();
 		html.innerHTML = htmlContent;
 
 		return html.outerHTML;
 	}
 
 	getFormattedFilterTags(getAsArray: boolean = false) : string | Array<any> {
-		const tmpTag = this.glossaryTestTagsToFilter.split(' ').join('');
+		let tmpTag;
+		switch(this.operationalMode) {
+			case 'GLOSSARY':
+				tmpTag = this.glossaryTestTagsToFilter.split(' ').join('');
+				break;
+			case 'FREESTYLE':
+				tmpTag = this.freestyleTestTagsToFilter.split(' ').join('');
+				break;
+		}
+
+
 		if(getAsArray === true && (typeof tmpTag == 'string')) {
 			return tmpTag.split(',')
 		}
@@ -1379,6 +2243,7 @@ class GlossaryTester extends Modal {
 		const files_with_tag = [] as TFile [];
 		let definitions: any[][] = [];
 
+
 		await Promise.all(files.map(async (file) => {
 			const file_cache = cache.getFileCache(file);
 			if(file_cache) {
@@ -1406,12 +2271,14 @@ class GlossaryTester extends Modal {
 			}
 
 		}));
-
+		console.log('::: 1 :::', definitions);
 		definitions = this.computeGlossaryUnknownProbability(definitions);
+
+		console.log('::: 2 :::', definitions);
 
 		definitions = this.getDefinitionsAccordingToUserPreference(definitions);
 		//shuffleArray(definitions);
-
+		console.log('::: 3 :::', definitions);
 		this.glossaryData = definitions;
 
 
@@ -1630,6 +2497,7 @@ class GlossaryTester extends Modal {
 		if(definitions) {
 
 			let glossaryHTML = this.generateGlossaryTest(definitions, this.maskMode, this.maskPercentage);
+			console.log(glossaryHTML);
 			let modalDiv = document.querySelector('.modal-container .modal-content');
 			if(modalDiv) {
 				modalDiv.innerHTML = glossaryHTML;
@@ -1638,15 +2506,14 @@ class GlossaryTester extends Modal {
 	}
 
 	updateStatusBar() {
-		this.timerCounter++;
-		let timerBox = document.querySelectorAll('.glossary-timer-box');
+		this.glossaryTimerCounter++;
+
+		let timerBox = document.querySelector(`.glossary-timer-box.question-number-${this.currentQuestionNumber}`);
 		if(timerBox) {
-			for(let i = 0; i < timerBox.length; i++) {
-				if(timerBox[i]) {
-					// @ts-ignore
-					timerBox[i].innerText = String(this.timerCounter);
-				}
-			}
+
+			// @ts-ignore
+			timerBox.innerText = String(this.glossaryTimerCounter);
+
 		}
 
 		let progressBox = document.querySelectorAll('.glossary-progress-box');
@@ -1667,6 +2534,8 @@ class GlossaryTester extends Modal {
 	}
 
 	async onOpen() {
+		clearInterval(this.intervalTimer);
+		this.glossaryTimerCounter = 0;
 		this.intervalTimer = window.setInterval(() => this.updateStatusBar(), 1000);
 		await this.scanFilesForDefinitions();
 
@@ -1877,18 +2746,29 @@ class SampleModal extends Modal {
 		contentEl.empty();
 	}
 }
-
+/*
 class ListCalloutsPluginOverride extends ListCalloutsPlugin {
 	async onload() {
 		console.log("the callout has landed");
 	}
 
-}
+}*/
+
 class SampleSettingTab extends PluginSettingTab {
 	plugin: MyPlugin;
 
+	get app(): App {
+		return this._app;
+	}
+
+	set app(value: App) {
+		this._app = value;
+	}
+
+	private _app: App;
 	constructor(app: App, plugin: MyPlugin) {
 		super(app, plugin);
+		this.app = app;
 		this.plugin = plugin;
 	}
 
@@ -1948,5 +2828,87 @@ class SampleSettingTab extends PluginSettingTab {
 					this.plugin.settings.glossaryTestTagsToFilter = String(value);
 					await this.plugin.saveSettings();
 				}));
+		containerEl.createEl('h2', {text: 'Freestyle Tester Settings'});
+		new Setting(containerEl)
+			.setName('Cards Per Session')
+			.setDesc('Number of cards tested in one session')
+			.addText(text => text
+				.setPlaceholder('cards tested in one session')
+				.setValue(String(this.plugin.settings.freestyleTesterCardsPerSession))
+				.onChange(async (value: string) => {
+					this.plugin.settings.freestyleTesterCardsPerSession = parseInt(value);
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Prioritisation By Days Since Last Test')
+			.setDesc('Prioritize cards that have not been tested for longer than a specified number of days')
+			.addText(text => text
+				.setPlaceholder('prioritize cards older than specified days')
+				.setValue(String(this.plugin.settings.freestyleTesterPrioritizeCardsOlderThanDays))
+				.onChange(async (value: string) => {
+
+					this.plugin.settings.freestyleTesterPrioritizeCardsOlderThanDays = parseInt(value);
+					await this.plugin.saveSettings();
+				}));
+		new Setting(containerEl)
+			.setName('Tags to match when generating glossary test')
+			.setDesc('Enter a list of tags separated by commas. Do not include the # symbol.')
+			.addText(textArea => textArea
+				.setPlaceholder('tags for filtering glossary test cards')
+				.setValue(String(this.plugin.settings.freestyleTestTagsToFilter))
+				.onChange(async (value: string) => {
+
+					this.plugin.settings.freestyleTestTagsToFilter = String(value);
+					await this.plugin.saveSettings();
+				}));
+		containerEl.createEl('h2', {text: 'Frontmatter Find & Replace Settings'});
+		new Setting(containerEl)
+			.setName('Tags to match when performing find/replace')
+			.setDesc('Enter a list of tags separated by commas. Do not include the # symbol.')
+			.addText(textArea => textArea
+				.setPlaceholder('tags for filtering glossary test cards')
+				.setValue(String(this.plugin.settings.findReplaceTagsToFilter))
+				.onChange(async (value: string) => {
+
+					this.plugin.settings.findReplaceTagsToFilter = String(value);
+					await this.plugin.saveSettings();
+				}));
+
+
+		new Setting(containerEl)
+			.setName('Original frontformatter property names find/replace')
+			.setDesc('Enter a list of property comma delimiled names within the front matter that you would like to either rename ir change the property value.')
+			.addText(textArea => textArea
+				.setPlaceholder('frontmatter property names you want to change')
+				.setValue(String(this.plugin.settings.findReplaceFrontmatterPropertyNamesOriginal))
+				.onChange(async (value: string) => {
+
+					this.plugin.settings.findReplaceFrontmatterPropertyNamesOriginal = String(value);
+					await this.plugin.saveSettings();
+				}));
+		new Setting(containerEl)
+			.setName('List of frontmatter property names you wish to replace with.')
+			.setDesc('In case you just want to change property values leave this field empty or copy from original property names above.')
+			.addText(textArea => textArea
+				.setPlaceholder('frontmatter property names you wish to replace with')
+				.setValue(String(this.plugin.settings.findReplaceFrontmatterPropertyNamesNew))
+				.onChange(async (value: string) => {
+
+					this.plugin.settings.findReplaceFrontmatterPropertyNamesNew = String(value);
+					await this.plugin.saveSettings();
+				}));
+		new Setting(containerEl)
+			.setName('Frontmatter property values that will be replaced')
+			.setDesc('Enter a | delimited list of values that will be repllaced. If you just need to change property names then leave this empty.')
+			.addText(textArea => textArea
+				.setPlaceholder('tags for filtering glossary test cards')
+				.setValue(String(this.plugin.settings.findReplaceFrontmatterValuesNew))
+				.onChange(async (value: string) => {
+
+					this.plugin.settings.findReplaceFrontmatterValuesNew = String(value);
+					await this.plugin.saveSettings();
+				}));
 	}
 }
+
