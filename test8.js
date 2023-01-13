@@ -1,11 +1,28 @@
-
-
-
-
 const puppeteer = require('puppeteer');
 const utils = require('util');
 
-function parsePage(str) {
+
+function parserNutritionValuePage(str) {
+	const regex = /nutrient results([\W\S]*?)<br>/gmi;
+
+	let m;
+
+	while ((m = regex.exec(str)) !== null) {
+		// This is necessary to avoid infinite loops with zero-width matches
+		if (m.index === regex.lastIndex) {
+			regex.lastIndex++;
+		}
+
+		// The result can be accessed through the `m`-variable.
+		m.forEach((match, groupIndex) => {
+			console.log(`Found match, group ${groupIndex}: ${match}`);
+		});
+	}
+}
+
+
+function parseNutritionDataSelfPage(str) {
+
 	const regex = /.*"c01">[Calorie Information|Carbohydrates|Fats &amp; Fatty Acids|Protein &amp; Amino Acids|Vitamins|Minerals|Sterols|Other]+<\/div>[\W\S]*?<div class="clearer">([\W\S.]*?)<(br class="clearer"|\/table|div class="groupBorder")>+/gm;
 
 	var firstPass = [];
@@ -57,13 +74,6 @@ function parsePage(str) {
 						case 'Sterols':
 							sectionCount = 6;
 							dataCount = 0;
-
-							if(typeof firstPass[sectionCount] == 'undefined') {
-								firstPass[sectionCount] = {};
-
-							}
-							firstPass[sectionCount]["title"] = title;
-							firstPass[sectionCount]["raw_nutritional_data"] = {};
 							break;
 						case 'Other':
 							sectionCount = 7;
@@ -356,13 +366,13 @@ function extractBasicMacrosFromNutritionData(nutritionData) {
 
 
 
-async function getNutritionalData (sourceURL) {
-	console.log(sourceURL)
+async function getNutritionalData (sourceURL, domain) {
+
 	let pageData = {};
 	pageData["url"] = sourceURL;
 	const browser = await puppeteer.launch({
 		args: ['--single-process'],
-		headless: true,
+		headless: false,
 		defaultViewport: null
 	});
 	const page = await browser.newPage();
@@ -371,35 +381,79 @@ async function getNutritionalData (sourceURL) {
 	);
 
 	const pageLoadOptions = {
-		timeout: 30000,
+		timeout: 90000,
 		//waitUntil: ['domcontentloaded', 'networkidle0']
 	};
 
-	try {
-		await page.goto(sourceURL, pageLoadOptions);
-		await page.waitForSelector('#onetrust-accept-btn-handler');
+
+	switch (domain) {
+		case 'nutritionvalue.org':
+			try {
+				await page.goto(sourceURL, pageLoadOptions);
+
+				pageData = await page.evaluate(() => {
+					let results = {};
+					let foodTitleEl = document.querySelector(
+						'#food-name');
+					results["title"] = foodTitleEl.innerText;
+
+
+					let foodDetailElements = document.querySelector(
+						'#main > tbody > tr.food-info > td > table > tbody > tr:nth-child(7)');
+					console.log(foodDetailElements.innerHTML);
+					results["raw_nutritional_data"] = foodDetailElements.innerHTML;
+
+					return results;
+				});
+			}
+			catch(err) {
+				console.log(err)
+				pageData["status"] = 'error';
+				return pageData;
+			}
+			break;
+		case 'nutritiondata.self.com':
+			try {
+				await page.goto(sourceURL, pageLoadOptions);
+				await page.waitForSelector('#onetrust-accept-btn-handler');
+			}
+			catch(err) {
+				pageData["status"] = 'error';
+				return pageData;
+			}
+			await page.click('#onetrust-accept-btn-handler');
+
+			await page.select('#facts_header > form > select', '100.0');
+
+			pageData = await page.evaluate(() => {
+				let results = {};
+				let foodTitleEl = document.querySelector(
+					'#facts_header .facts-heading');
+				results["title"] = foodTitleEl.innerText;
+				let foodDetailElements = document.querySelector(
+					'#NutritionInformationSlide');
+				results["raw_nutritional_data"] = foodDetailElements.innerHTML;
+				return results;
+			});
+			break;
+		default:
 	}
-	catch(err) {
-		pageData["status"] = 'error';
-		return pageData;
+
+	switch (domain) {
+		case 'nutritionvalue.org':
+			pageData["basicMacros"] = parserNutritionValuePage(pageData["raw_nutritional_data"]);
+			break;
+		case 'nutritiondata.self.com':
+			pageData["basicMacros"] = extractBasicMacrosFromNutritionData(parseNutritionDataSelfPage(pageData["raw_nutritional_data"]));
+			break;
+		default:
+
 	}
-	await page.click('#onetrust-accept-btn-handler');
 
-	await page.select('#facts_header > form > select', '100.0');
 
-	pageData = await page.evaluate(() => {
-		let results = {};
-		let foodTitleEl = document.querySelector('#facts_header .facts-heading');
-		results["title"] = foodTitleEl.innerText;
-		let foodDetailElements = document.querySelector('#NutritionInformationSlide' );
-		results["raw_nutritional_data"] = foodDetailElements.innerHTML;
-		return results;
-	})
-
-	pageData["basicMacros"] = extractBasicMacrosFromNutritionData(parsePage(pageData["raw_nutritional_data"]));
 	pageData["status"] = 'success';
 
-	browser.close();
+	//browser.close();
 	return pageData;
 }
 
@@ -410,18 +464,21 @@ async function getNutritionalData (sourceURL) {
 
 let dataPromise = new Promise(async function(myResolve, myReject) {
 	const sourceURLs = [
-		`https://nutritiondata.self.com/facts/beef-products/3271/2`,
-		`https://nutritiondata.self.com/facts/fruits-and-fruit-juices/1843/2`,
-		`https://nutritiondata.self.com/facts/fats-and-oils/7725/2`,
-		`https://nutritiondata.self.com/facts/dairy-and-egg-products/104/2`,
-		`https://nutritiondata.self.com/facts/cereal-grains-and-pasta/5707/2`,
-		`https://nutritiondata.self.com/facts/beverages/3847/2`
+		`https://www.nutritionvalue.org/Apples%2C_with_skin%2C_gala%2C_raw_nutritional_value.html?size=100+g`,
+		`https://www.nutritionvalue.org/Beef_rib_eye_steak_by_Raley%27s_578091_nutritional_value.html?size=100+g`
 	]
 	function randomInteger(min, max) {
 		return Math.floor(Math.random() * (max - min + 1)) + min;
 	}
 	const url = sourceURLs[randomInteger(0, (sourceURLs.length - 1) )];
-	let result = await getNutritionalData(url);
+	const domain = 'nutritionvalue.org';
+
+	let result = await getNutritionalData(url, domain);
+
+	console.log(
+		utils.inspect(result, {maxArrayLength: null, depth: null}));
+
+
 	if(result["status"] == "success") {
 		console.log(
 			utils.inspect(result, {maxArrayLength: null, depth: null}));
