@@ -202,7 +202,7 @@ class MikielAPI {
 	private _foodIntakeTrackerInstance: FoodIntakeTracker;
 
 	constructor(app: App) {
-		console.log('app', app);
+
 		this._app = app;
 		this.foodIntakeTrackerInstance = new FoodIntakeTracker(this.app);
 	}
@@ -280,9 +280,9 @@ class MikielAPI {
 		return fileContent;
 	}
 
-	async getNutritionalData(nutritionSourceURL: string ) {
+	async getNutritionalData(nutritionSourceURL: string, domain: string = '' ) {
 
-		let nutritionData = await this.foodIntakeTrackerInstance.getNutritionalData(nutritionSourceURL);
+		let nutritionData = await this.foodIntakeTrackerInstance.getNutritionalData(nutritionSourceURL, false, domain);
 		return nutritionData;
 
 
@@ -445,6 +445,45 @@ export default class MyPlugin extends Plugin {
 				await glossaryTesterInstance.updateFrontmatterFieldInFilePath('', tagArr, propArr, newPropArr);
 			}
 		});
+
+		/**
+		 * This command will use the source url in the Inventory/foods notes to fetch nutritional data and update the frontmatter
+		 */
+		this.addCommand({
+			id: 'mikiel-update-food-data',
+			name: 'Mikiel Update Food Data',
+			callback: async () => {
+				const foodItemFrontmatterField : string = 'nutritional_information_per_100g';
+				foodIntakeTrackerInstance = new FoodIntakeTracker(this.app);
+				const activeFile = this.app.workspace.getActiveFile();
+
+				if (activeFile && activeFile.path) {
+					console.log(activeFile);
+					let fmc = await foodIntakeTrackerInstance.getFoodInventoryItemFrontmatter(activeFile.basename);
+					for(let i = 0; i < fmc.length; i++) {
+						if (fmc[i]["name"] == 'energy') {
+							fmc[i]["amount"] = '555';
+						}
+					}
+					console.log(fmc);
+
+					let fields = [];
+					let values = [];
+
+
+					let keysIdx = 0;
+					fields.push(`["${foodItemFrontmatterField}"]["1"]["name"]`);
+					values.push('energy');
+					fields.push(`["${foodItemFrontmatterField}"]["1"]["amount"]`);
+					values.push('555');
+
+					const entriesUpdatedCount = await foodIntakeTrackerInstance.updateFrontmatterFoodIntakeProperty(activeFile.path, fields, values, foodItemFrontmatterField);
+				}
+				//
+			}
+		});
+
+
 
 		/**
 		 * This command lists entire glossary ond outputs to console
@@ -702,6 +741,8 @@ interface PageExtractData {
 	title: string;
 	raw_nutritional_data?: string;
 	basicMacros: any;
+	error?: string;
+	domain: string;
 }
 
 
@@ -710,7 +751,8 @@ const DEFAULT_PAGEEXTRACTDATA: PageExtractData = {
 	status: '',
 	title: '',
 	raw_nutritional_data: '',
-	basicMacros: {}
+	basicMacros: {},
+	domain: ''
 }
 
 
@@ -754,10 +796,206 @@ class FoodIntakeTracker {
 		this.app = app;
 	}
 
-	parsePage(str: string | undefined)  {
+	/**
+	 * parseNutritionDataSelfPage
+	 *
+	 * parser specific to nutritionvalue.org
+	 * @param str
+	 */
+	parserNutritionValuePage(str: string | undefined)  {
+		const regex =/(nutrient results([\W\S]*?)<br>|id="calories">([\d]+)<\/td>)/gim;
+
+		var firstPass : Array<any> = [];
+
+		if (typeof str == 'undefined') {
+			return firstPass;
+		}
+		let sectionCount : number = 0;
+		let dataCount : number  = -1;
+		let key: string = '';
+
+		let val = '';
+		let ar = [];
+		let title = '';
+		let m: any;
+
+		while ((m = regex.exec(str)) !== null) {
+			// This is necessary to avoid infinite loops with zero-width matches
+			if (m.index === regex.lastIndex) {
+				regex.lastIndex++;
+			}
+
+			m.forEach((match : string, groupIndex: number) => {
+				let initialize = false;
+				if(groupIndex == 1) {
+					ar = match.split('"');
+					title = ar[1];
+					sectionCount = 0;
+					initialize = true;
+					if (typeof firstPass[sectionCount] == 'undefined') {
+						firstPass[sectionCount] = {};
+					}
+					if(title == 'calories') {
+						firstPass[sectionCount]["title"] = 'Calorie Information';
+					}
+				}
+				if(groupIndex == 3 && sectionCount == 0) {
+					firstPass[sectionCount]["raw_nutritional_data"] = [{ name: 'Calories', value : match, daily_value: '', units: 'kcal' }];
+				}
+				if (groupIndex == 2) {
+
+					const regex3 = new RegExp('<th colspan="3">([\\W\\S]*?)<\\/th>',
+						'gm');
+					const heading = regex3.exec(match);
+
+					if(heading) {
+						title = heading[1];
+
+						let initialize = false;
+
+						switch (title) {
+							case 'Carbohydrates':
+								sectionCount = 1;
+								dataCount = 0;
+								initialize = true;
+								break;
+							case 'Fats and Fatty Acids':
+								sectionCount = 2;
+								dataCount = 0;
+								initialize = true;
+								break;
+							case 'Proteins and Aminoacids':
+								sectionCount = 3;
+								dataCount = 0;
+								initialize = true;
+								break;
+							case 'Vitamins':
+								sectionCount = 4;
+								dataCount = 0;
+								initialize = true;
+								break;
+							case 'Minerals':
+								sectionCount = 5;
+								dataCount = 0;
+								initialize = true;
+								break;
+							case 'Sterols':
+								sectionCount = 6;
+								dataCount = 0;
+								break;
+							case 'Other':
+								sectionCount = 7;
+								dataCount = 0;
+								initialize = true;
+								break;
+							default:
+						}
+						if (initialize === true) {
+							if (typeof firstPass[sectionCount] == 'undefined') {
+								firstPass[sectionCount] = {};
+							}
+							let pseudoTitle = title;
+							switch(title) {
+								case 'Fats and Fatty Acids':
+									pseudoTitle = 'Fats & Fatty Acids';
+									break;
+								case 'Proteins and Aminoacids':
+									pseudoTitle = 'Protein & Amino Acids';
+									break;
+								default:
+							}
+							firstPass[sectionCount]["title"] = pseudoTitle;
+							firstPass[sectionCount]["raw_nutritional_data"] = {};
+						}
+
+						const regex2 = /class="tooltip">([\W\S]*?)<\/a>[\W\S]*?class="right">([\S]+?)<\/td>/gm;
+
+						let m2;
+
+						while ((m2 = regex2.exec(match)) !== null) {
+							if (m.index === regex2.lastIndex) {
+								regex2.lastIndex++;
+							}
+
+							m2.forEach((match2, groupIndex2) => {
+								switch (groupIndex2) {
+									case 1:
+										key = 'name';
+										val = match2;
+										switch (match2) {
+											case 'Carbohydrate':
+												val = 'Total Carbohydrate';
+												break;
+											case 'Fiber':
+												val = 'Dietary Fiber';
+												break;
+											case 'Fat':
+												val = 'Total Fat';
+												break;
+											default:
+										}
+										try {
+											if (typeof firstPass[sectionCount]["raw_nutritional_data"][`${dataCount}`] ==
+												'undefined') {
+												firstPass[sectionCount]["raw_nutritional_data"][`${dataCount}`] = {};
+											}
+
+											firstPass[sectionCount]["raw_nutritional_data"][`${dataCount}`][`${key}`] = val;
+										} catch (err) {
+										}
+
+										break;
+									case 2:
+										let ar = match2.split('&nbsp;');
+										key = 'value';
+										val = ar[0];
+										try {
+											if (typeof firstPass[sectionCount]["raw_nutritional_data"][`${dataCount}`] ==
+												'undefined') {
+												firstPass[sectionCount]["raw_nutritional_data"][`${dataCount}`] = {};
+											}
+
+											firstPass[sectionCount]["raw_nutritional_data"][`${dataCount}`][`${key}`] = val;
+										} catch (err) {
+										}
+
+										key = 'units';
+										val = ar[1];
+										try {
+											if (typeof firstPass[sectionCount]["raw_nutritional_data"][`${dataCount}`] ==
+												'undefined') {
+												firstPass[sectionCount]["raw_nutritional_data"][`${dataCount}`] = {};
+											}
+
+											firstPass[sectionCount]["raw_nutritional_data"][`${dataCount}`][`${key}`] = val;
+										} catch (err) {}
+										dataCount++;
+										break;
+									default:
+								}
+							});
+						}
+					}
+				}
+			});
+		}
+		return firstPass;
+	}
+	/**
+	 * parseNutritionDataSelfPage
+	 *
+	 * parser specific to nutritiondata.self.com
+	 * @param str
+	 */
+	parseNutritionDataSelfPage(str: string | undefined)  {
 		const regex = /.*"c01">[Calorie Information|Carbohydrates|Fats &amp; Fatty Acids|Protein &amp; Amino Acids|Vitamins|Minerals|Sterols|Other]+<\/div>[\W\S]*?<div class="clearer">([\W\S.]*?)<(br class="clearer"|\/table|div class="groupBorder")>+/gm;
 
 		var firstPass : Array<any> = [];
+
+		if (typeof str == 'undefined') {
+			return firstPass;
+		}
+
 		let sectionCount : number = 0;
 		let dataCount : number  = -1;
 		let key: string = '';
@@ -824,7 +1062,6 @@ class FoodIntakeTracker {
 						break;
 					case 1:
 						let m2;
-						//const regex2 = /.*"([A-Z_]*[NUTRIENT_]+[\d]{1,4}|indented|nf1.*)[">&nbsp;]*["]*(.*)<[\/]*/gm;
 						const regex2 = /.*"([DV_]*[NUTRIENT_]+[\d]{1,4}|indented|nf1.*)">(&nbsp;)*["]*(.*)<[\/]*/gm;
 						const str = match;
 						while ((m2 = regex2.exec(str)) !== null) {
@@ -942,160 +1179,161 @@ class FoodIntakeTracker {
 			let val: number = -1;
 			let unit: string = 'g';
 			let macro: string = '';
-			switch (nutritionData[i]["title"]) {
-				case 'Calorie Information':
-					macro = 'calories'
+			if(nutritionData[i] && nutritionData[i]["title"] ) {
+				switch (nutritionData[i]["title"]) {
+					case 'Calorie Information':
+						macro = 'calories'
 
-					for(let entry in nutritionData[i]["raw_nutritional_data"]) {
-						val = -1;
-						key = '';
-						if (typeof basicNutritionData["calories"] == 'undefined') {
-							basicNutritionData["calories"] = {};
+						for (let entry in nutritionData[i]["raw_nutritional_data"]) {
+							val = -1;
+							key = '';
+							if (typeof basicNutritionData["calories"] == 'undefined') {
+								basicNutritionData["calories"] = {};
+							}
+							if (nutritionData[i]["raw_nutritional_data"][entry]["name"] == 'Calories') {
+								key = 'total_calories'
+								val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
+							}
+							if (nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
+								unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
+							}
+							if (key != '') {
+								val = convertToGrams(val, unit);
+								basicNutritionData['calories'][key] = val;
+							}
 						}
-						if(nutritionData[i]["raw_nutritional_data"][entry]["name"] == 'Calories') {
-							key = 'total_calories'
-							val  = nutritionData[i]["raw_nutritional_data"][entry]["value"]
+						break;
+					case 'Carbohydrates':
+						macro = 'carbohydrates'
+						for (let entry in nutritionData[i]["raw_nutritional_data"]) {
+							val = -1;
+							key = '';
+							if (typeof basicNutritionData['carbohydrates'] == 'undefined') {
+								basicNutritionData['carbohydrates'] = {};
+							}
+							if (nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
+								unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
+							}
+							switch (nutritionData[i]["raw_nutritional_data"][entry]["name"]) {
+								case 'Total Carbohydrate':
+									key = 'total_carbohydrates'
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
+									break;
+								case 'Dietary Fiber':
+									key = "fiber";
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
+									break;
+								case 'Sugars':
+									basicNutritionData['carbohydrates']["sugars"] = nutritionData[i]["raw_nutritional_data"][entry]["value"];
+									break;
+								default:
+							}
+							if (nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
+								unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
+							}
+							if (key != '') {
+								val = convertToGrams(val, unit);
+								basicNutritionData['carbohydrates'][key] = val;
+							}
 						}
-						if(nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
-							unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
-						}
-						if(key != '') {
-							val = convertToGrams(val, unit);
-							basicNutritionData['calories'][key] = val;
-						}
-					}
-					break;
-				case 'Carbohydrates':
-					macro = 'carbohydrates'
-					for(let entry in nutritionData[i]["raw_nutritional_data"]) {
-						val = -1;
-						key = '';
-						if (typeof basicNutritionData['carbohydrates'] == 'undefined') {
-							basicNutritionData['carbohydrates'] = {};
-						}
-						if(nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
-							unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
-						}
-						switch (nutritionData[i]["raw_nutritional_data"][entry]["name"]) {
-							case 'Total Carbohydrate':
-								key = 'total_carbohydrates'
-								val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
-								break;
-							case 'Dietary Fiber':
-								key = "fiber";
-								val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
-								break;
-							case 'Sugars':
-								basicNutritionData['carbohydrates']["sugars"] = nutritionData[i]["raw_nutritional_data"][entry]["value"];
-								break;
-							default:
-						}
-						if(nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
-							unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
-						}
-						if(key != '') {
-							val = convertToGrams(val, unit);
-							basicNutritionData['carbohydrates'][key] = val;
-						}
-					}
-				case 'Fats & Fatty Acids':
-					macro = 'fats';
-					for(let entry in nutritionData[i]["raw_nutritional_data"]) {
-						val = -1;
-						key = '';
+					case 'Fats & Fatty Acids':
+						macro = 'fats';
+						for (let entry in nutritionData[i]["raw_nutritional_data"]) {
+							val = -1;
+							key = '';
 
-						if (typeof basicNutritionData['fats'] == 'undefined') {
-							basicNutritionData['fats'] = {};
-						}
+							if (typeof basicNutritionData['fats'] == 'undefined') {
+								basicNutritionData['fats'] = {};
+							}
 
-						if(nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
-							unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
+							if (nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
+								unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
+							}
+							switch (nutritionData[i]["raw_nutritional_data"][entry]["name"]) {
+								case 'Total Fat':
+									key = 'total_fats';
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
+									break;
+								case 'Saturated Fat':
+									key = 'saturates';
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
+									break;
+								case 'Monounsaturated Fat':
+									key = "monounsaturated";
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
+									break;
+								case 'Polyunsaturated Fat':
+									key = "polyunsaturated";
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
+									break;
+								case 'Total trans fatty acids':
+									key = "transfats";
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
+									break;
+								case 'Total Omega-3 fatty acids':
+									key = "omega3";
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
+									break;
+								case 'Total Omega-6 fatty acids':
+									key = "omega6";
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
+									break;
+								default:
+							}
+							if (nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
+								unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
+							}
+							if (key != '') {
+								val = convertToGrams(val, unit);
+								basicNutritionData['fats'][key] = val;
+							}
 						}
-						switch (nutritionData[i]["raw_nutritional_data"][entry]["name"]) {
-							case 'Total Fat':
-								key = 'total_fats';
-								val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
-								break;
-							case 'Saturated Fat':
-								key = 'saturates';
-								val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
-								break;
-							case 'Monounsaturated Fat':
-								key = "monounsaturated";
-								val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
-								break;
-							case 'Polyunsaturated Fat':
-								key = "polyunsaturated";
-								val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
-								break;
-							case 'Total trans fatty acids':
-								key = "transfats";
-								val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
-								break;
-							case 'Total Omega-3 fatty acids':
-								key = "omega3";
-								val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
-								break;
-							case 'Total Omega-6 fatty acids':
-								key = "omega6";
-								val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
-								break;
-							default:
+						break;
+					case 'Protein & Amino Acids':
+						macro = 'protein';
+						for (let entry in nutritionData[i]["raw_nutritional_data"]) {
+							val = -1;
+							key = '';
+							if (typeof basicNutritionData['protein'] == 'undefined') {
+								basicNutritionData['protein'] = {};
+							}
+							if (nutritionData[i]["raw_nutritional_data"][entry]["name"] == 'Protein') {
+								key = 'total_protein';
+								val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
+							}
+							if (nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
+								unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
+							}
+							if (key != '') {
+								val = convertToGrams(val, unit);
+								basicNutritionData['protein'][key] = val;
+							}
 						}
-						if(nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
-							unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
+						break;
+					case 'Minerals':
+						macro = 'minerals';
+						for (let entry in nutritionData[i]["raw_nutritional_data"]) {
+							val = -1;
+							key = '';
+							if (typeof basicNutritionData['minerals'] == 'undefined') {
+								basicNutritionData['minerals'] = {};
+							}
+							if (nutritionData[i]["raw_nutritional_data"][entry]["name"] == 'Sodium') {
+								key = 'salt';
+								val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
+							}
+							if (nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
+								unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
+							}
+							if (key != '') {
+								val = convertToGrams(val, unit);
+								basicNutritionData['minerals'][key] = val;
+							}
 						}
-						if(key != '') {
-							val = convertToGrams(val, unit);
-							basicNutritionData['fats'][key] = val;
-						}
-					}
-					break;
-				case 'Protein & Amino Acids':
-					macro = 'protein';
-					for(let entry in nutritionData[i]["raw_nutritional_data"]) {
-						val = -1;
-						key = '';
-						if (typeof basicNutritionData['protein'] == 'undefined') {
-							basicNutritionData['protein'] = {};
-						}
-						if(nutritionData[i]["raw_nutritional_data"][entry]["name"] == 'Protein') {
-							key = 'total_protein';
-							val  = nutritionData[i]["raw_nutritional_data"][entry]["value"]
-						}
-						if(nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
-							unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
-						}
-						if(key != '') {
-							val = convertToGrams(val, unit);
-							basicNutritionData['protein'][key] = val;
-						}
-					}
-					break;
-				case 'Minerals':
-					macro = 'minerals';
-					for(let entry in nutritionData[i]["raw_nutritional_data"]) {
-						val = -1;
-						key = '';
-						if (typeof basicNutritionData['minerals'] == 'undefined') {
-							basicNutritionData['minerals'] = {};
-						}
-						if(nutritionData[i]["raw_nutritional_data"][entry]["name"] == 'Sodium') {
-							key = 'salt';
-							val  = nutritionData[i]["raw_nutritional_data"][entry]["value"]
-						}
-						if(nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
-							unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
-						}
-						if(key != '') {
-							val = convertToGrams(val, unit);
-							basicNutritionData['minerals'][key] = val;
-						}
-					}
-					break;
-				default:
+						break;
+					default:
+				}
 			}
-
 		}
 		return basicNutritionData;
 	}
@@ -1138,11 +1376,12 @@ class FoodIntakeTracker {
 	 *
 	 * @param sourceURL
 	 */
-	async getNutritionalData (sourceURL: string, includeRawHTML: boolean = false) : Promise<PageExtractData> {
+	async getNutritionalData (sourceURL: string, includeRawHTML: boolean = false, domain: string) : Promise<PageExtractData> {
 
 		let pageData: PageExtractData = {	url: '',
 			status: '',
 			title: '',
+			domain: domain,
 			raw_nutritional_data: '',
 			basicMacros: {}
 		};
@@ -1158,44 +1397,98 @@ class FoodIntakeTracker {
 		);
 
 		const pageLoadOptions = {
-			timeout: 30000
+			timeout: 90000
 		};
 
-		try {
-			await page.goto(sourceURL, pageLoadOptions);
-			await page.waitForSelector('#onetrust-accept-btn-handler');
+		switch (domain) {
+			case 'nutritionvalue.org':
+				try {
+					await page.goto(sourceURL, pageLoadOptions);
+					}
+					catch(err) {
+						console.log(err);
+						pageData["error"] = err
+						pageData["status"] = 'error';
+						return pageData;
+					}
+					pageData = await page.evaluate(() => {
+						let results : PageExtractData = {
+							url: '',
+							status: '',
+							title: '',
+							raw_nutritional_data: '',
+							basicMacros: {}
+						};
+						let foodTitleEl = document.querySelector(
+							'#food-name');
+						results["title"] = '';
+						if(foodTitleEl) {
+							// @ts-ignore
+							results["title"] = foodTitleEl.innerText;
+						}
+
+						let foodDetailElements = document.querySelector(
+							'#main > tbody > tr.food-info');
+						results["raw_nutritional_data"] = '';
+						if(foodDetailElements) {
+							results["raw_nutritional_data"] = foodDetailElements.innerHTML;
+						}
+
+						return results;
+					});
+
+				break;
+			case 'nutritiondata.self.com':
+				try {
+					await page.goto(sourceURL, pageLoadOptions);
+					await page.waitForSelector('#onetrust-accept-btn-handler');
+				}
+				catch(err) {
+					pageData["status"] = 'error';
+					return pageData;
+				}
+				await page.click('#onetrust-accept-btn-handler');
+
+				await page.select('#facts_header > form > select', '100.0');
+
+				pageData = await page.evaluate(() => {
+					let results : PageExtractData = {
+						url: '',
+						status: '',
+						title: '',
+						raw_nutritional_data: '',
+						basicMacros: {}
+					};
+					let foodTitleEl = document.querySelector(
+						'#facts_header .facts-heading');
+					results["title"] = '';
+					if(foodTitleEl) {
+						// @ts-ignore
+						results["title"] = foodTitleEl.innerText;
+					}
+					let foodDetailElements = document.querySelector(
+						'#NutritionInformationSlide');
+					results["raw_nutritional_data"] = '';
+					if(foodDetailElements) {
+						results["raw_nutritional_data"] = foodDetailElements.innerHTML;
+					}
+					return results;
+				});
+				break;
+			default:
 		}
-		catch(err) {
-			pageData["status"] = 'error';
-			return pageData;
+
+		switch (domain) {
+			case 'nutritionvalue.org':
+				pageData["basicMacros"] = this.extractBasicMacrosFromNutritionData(this.parserNutritionValuePage(pageData["raw_nutritional_data"]));
+				break;
+			case 'nutritiondata.self.com':
+				pageData["basicMacros"] = this.extractBasicMacrosFromNutritionData(this.parseNutritionDataSelfPage(pageData["raw_nutritional_data"]));
+				break;
+			default:
+
 		}
-		await page.click('#onetrust-accept-btn-handler');
 
-		await page.select('#facts_header > form > select', '100.0');
-
-		pageData = await page.evaluate(() => {
-			let results : PageExtractData = {
-				url: '',
-				status: '',
-				title: '',
-				raw_nutritional_data: '',
-				basicMacros: {}
-			};
-			let foodTitleEl = document.querySelector('#facts_header .facts-heading');
-			results["title"] = '';
-			if(foodTitleEl) {
-				// @ts-ignore
-				results["title"] = foodTitleEl.innerText;
-			}
-			let foodDetailElements = document.querySelector('#NutritionInformationSlide' );
-			results["raw_nutritional_data"] = '';
-			if(foodDetailElements) {
-				results["raw_nutritional_data"] = foodDetailElements.innerHTML;
-			}
-			return results;
-		})
-
-		pageData["basicMacros"] = this.extractBasicMacrosFromNutritionData(this.parsePage(pageData["raw_nutritional_data"]));
 		if(includeRawHTML === false ) {
 			delete pageData["raw_nutritional_data"];
 		}
@@ -1227,12 +1520,17 @@ class FoodIntakeTracker {
 	 *
 	 */
 	async getFoodInventoryItemFrontmatter(foodItemName: string) : Promise<any> {
+		if (foodItemName.indexOf('.md') == -1) {
+			foodItemName = `${foodItemName.trim()}.md`;
+		}
 		const foodInventoryFolderPath : string = 'Inventory/Foods/';
 		const foodItemFrontmatterField : string = 'nutritional_information_per_100g';
 
 		let foodItemFrontmatter: object = {};
 		let foodInventoryItemPath = `${foodInventoryFolderPath}${foodItemName.trim()}`;
+
 		let fmc : object = await this.getFrontmatterSectionFromFilePath(foodInventoryItemPath);
+
 		if(fmc && fmc[foodItemFrontmatterField as keyof object]) {
 			foodItemFrontmatter = fmc[foodItemFrontmatterField as keyof object];
 		}

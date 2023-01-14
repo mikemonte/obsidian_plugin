@@ -396,6 +396,9 @@ async function getNutritionalData (sourceURL) {
 		return results;
 	})
 
+	console.log(utils.inspect(parsePage(pageData["raw_nutritional_data"]), {maxArrayLength: null, depth: null}));
+
+
 	pageData["basicMacros"] = extractBasicMacrosFromNutritionData(parsePage(pageData["raw_nutritional_data"]));
 	pageData["status"] = 'success';
 
