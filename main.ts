@@ -477,7 +477,7 @@ export default class MyPlugin extends Plugin {
 					fields.push(`["${foodItemFrontmatterField}"]["1"]["amount"]`);
 					values.push('555');
 
-					const entriesUpdatedCount = await foodIntakeTrackerInstance.updateFrontmatterFoodIntakeProperty(activeFile.path, fields, values, foodItemFrontmatterField);
+					const entriesUpdatedCount = await foodIntakeTrackerInstance.updateFrontmatterFoodIntakeProperty(activeFile.path, fields, values, foodItemFrontmatterField, false);
 				}
 				//
 			}
@@ -1542,6 +1542,7 @@ class FoodIntakeTracker {
 	}
 
 	/**
+	/**
 	 * updateFrontmatterProperty
 	 *
 	 *
@@ -1549,7 +1550,7 @@ class FoodIntakeTracker {
 	 * @param fields
 	 * @param values
 	 */
-	async updateFrontmatterFoodIntakeProperty(filePath: string, fields: Array<string>, values: Array<string> = [], foodIntakeFrontmatterRootField: string) : Promise<number> {
+	async updateFrontmatterFoodIntakeProperty(filePath: string, fields: Array<string>, values: Array<string> = [], foodIntakeFrontmatterRootField: string, resetOriginalData: boolean = true) : Promise<number> {
 
 		let numberOfEntriesUpdate: number = 0;
 		let fileContent: string = "";
@@ -1567,8 +1568,9 @@ class FoodIntakeTracker {
 		let fmc = await this.getFrontmatterSectionFromFilePath(filePath);
 
 		// TODO find alternative way to do this as EVAL is not safe
-
-		eval(`fmc["${foodIntakeFrontmatterRootField}"] = {};`);
+		if(resetOriginalData === true) {
+			eval(`fmc["${foodIntakeFrontmatterRootField}"] = {};`);
+		}
 
 
 		console.log(fmc);
@@ -1582,6 +1584,7 @@ class FoodIntakeTracker {
 				numberOfEntriesUpdate++;
 			} catch (error) {
 				let tmpAr = fields[i].split('[');
+
 				for (let j = 0; j < tmpAr.length; j++) {
 					let tmpField = tmpAr[j].split(']').join('');
 					tmpField = tmpField.trim();
@@ -1603,7 +1606,69 @@ class FoodIntakeTracker {
 		}
 
 
+		// @ts-ignore
+		//fmc[foodIntakeFrontmatterRootField]['3'] = sortObject(fmc[foodIntakeFrontmatterRootField]['3']);
+
+		console.log('======== fmc3 2 ==========')
+		// @ts-ignore
+		console.log(fmc[foodIntakeFrontmatterRootField]['3'])
+		console.log('======== fmc3 2 ==========')
+
+		// @ts-ignore
+		var compareFunc, toTAML;
+
+		compareFunc = (a: any, b: any) => {
+			if (a < b) {
+				return -1;
+			} else if (a > b) {
+				return 1;
+			} else {
+				return 0;
+			}
+		};
+
+		toTAML = function(obj: any, lKeys: any) {
+			var h, i, j, key, len, sortKeys;
+			h = {};
+			for (i = j = 0, len = lKeys.length; j < len; i = ++j) {
+				key = lKeys[i];
+				// @ts-ignore
+				h[key] = i + 1;
+			}
+			sortKeys = (a: any, b: any) => {
+				// @ts-ignore
+				if (h.hasOwnProperty(a)) {
+					// @ts-ignore
+					if (h.hasOwnProperty(b)) {
+						// @ts-ignore
+						return compareFunc(h[a], h[b]);
+					} else {
+						return -1;
+					}
+				} else {
+					// @ts-ignore
+					if (h.hasOwnProperty(b)) {
+						return 1;
+					} else {
+						// --- compare keys alphabetically
+						// @ts-ignore
+						return compareFunc(a, b);
+					}
+				}
+			};
+			return yaml.dump(obj, {
+				skipInvalid: true,
+				indent: 0,
+				sortKeys,
+				lineWidth: -1
+			});
+		};
+
+		// @ts-ignore
+		fmc[foodIntakeFrontmatterRootField]['3'] = toTAML(fmc[foodIntakeFrontmatterRootField]['3'], ['name', 'amount']);
+
 		const doc = new YML.Document();
+
 		doc.contents = fmc;
 
 		metaEndIdx[1] = doc.toString();
@@ -1616,7 +1681,7 @@ class FoodIntakeTracker {
 		let tmpMetaAr = metaEndIdx[1].split('\n');
 
 		metaEndIdx[1] = `${tmpMetaAr.join('\n')}\n`;
-
+		metaEndIdx[1] = metaEndIdx[1].split('|').join('');
 		fileContent = `${metaEndIdx.join('---\n')}`;
 
 		await this.app.vault.modify(existingFile, fileContent);
