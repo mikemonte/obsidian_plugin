@@ -458,14 +458,14 @@ export default class MyPlugin extends Plugin {
 				const activeFile = this.app.workspace.getActiveFile();
 
 				if (activeFile && activeFile.path) {
-					console.log(activeFile);
+
 					let fmc = await foodIntakeTrackerInstance.getFoodInventoryItemFrontmatter(activeFile.basename);
 					for(let i = 0; i < fmc.length; i++) {
-						if (fmc[i]["name"] == 'energy') {
-							fmc[i]["amount"] = '555';
-						}
+				//		if (fmc[i]["name"] == 'energy') {
+				//			fmc[i]["amount"] = '555';
+				//		}
 					}
-					console.log(fmc);
+
 
 					let fields = [];
 					let values = [];
@@ -475,7 +475,7 @@ export default class MyPlugin extends Plugin {
 					fields.push(`["${foodItemFrontmatterField}"]["1"]["name"]`);
 					values.push('energy');
 					fields.push(`["${foodItemFrontmatterField}"]["1"]["amount"]`);
-					values.push('555');
+					values.push(555);
 
 					const entriesUpdatedCount = await foodIntakeTrackerInstance.updateFrontmatterFoodIntakeProperty(activeFile.path, fields, values, foodItemFrontmatterField, false);
 				}
@@ -1534,9 +1534,6 @@ class FoodIntakeTracker {
 		if(fmc && fmc[foodItemFrontmatterField as keyof object]) {
 			foodItemFrontmatter = fmc[foodItemFrontmatterField as keyof object];
 		}
-		console.log('========  foodItemFrontmatter  =========');
-		console.log(foodItemFrontmatter);
-		console.log('========  foodItemFrontmatter  =========');
 
 		return foodItemFrontmatter;
 	}
@@ -1572,15 +1569,18 @@ class FoodIntakeTracker {
 			eval(`fmc["${foodIntakeFrontmatterRootField}"] = {};`);
 		}
 
-
-		console.log(fmc);
 		let testValue = null;
 		let testKey = '';
 		for (let i = 0; i < fields.length; i++) {
 			try {
 				// TODO find alternative way to do this as EVAL is not safe
 				eval(`testValue = fmc${fields[i]};`);
-				eval(`fmc${fields[i]} = '${values[i]}';`);
+				try {
+					eval(`fmc${fields[i]} = ${values[i]};`);
+				}
+				catch(err) {
+					eval(`fmc${fields[i]} = '${values[i]}';`);
+				}
 				numberOfEntriesUpdate++;
 			} catch (error) {
 				let tmpAr = fields[i].split('[');
@@ -1594,7 +1594,12 @@ class FoodIntakeTracker {
 						if (typeof eval(`fmc${testKey}`) == 'undefined' && j < (tmpAr.length - 1)) {
 							// TODO find alternative way to do this as EVAL is not safe
 							eval(`fmc${testKey} = {}`);
-							eval(`fmc${fields[i]} = '${values[i]}';`);
+							try {
+								eval(`fmc${fields[i]} = ${values[i]};`);
+							}
+							catch(err) {
+								eval(`fmc${fields[i]} = '${values[i]}';`);
+							}
 							numberOfEntriesUpdate++;
 						}
 						if ((j == (tmpAr.length - 1))) {
@@ -1605,19 +1610,14 @@ class FoodIntakeTracker {
 			}
 		}
 
-
 		// @ts-ignore
-		//fmc[foodIntakeFrontmatterRootField]['3'] = sortObject(fmc[foodIntakeFrontmatterRootField]['3']);
-
-		console.log('======== fmc3 2 ==========')
-		// @ts-ignore
-		console.log(fmc[foodIntakeFrontmatterRootField]['3'])
-		console.log('======== fmc3 2 ==========')
-
-		// @ts-ignore
-		var compareFunc, toTAML;
+		var compareFunc, toTAML, trimYAML;
 
 		compareFunc = (a: any, b: any) => {
+			if(!isNaN(a) && !isNaN(b)) {
+				a = +a;
+				b = +b;
+			}
 			if (a < b) {
 				return -1;
 			} else if (a > b) {
@@ -1627,6 +1627,29 @@ class FoodIntakeTracker {
 			}
 		};
 
+		trimYAML = function(str: string) : string {
+			const regex = /('([\d])+':[\W\S]*?([\ ]+)[a-z]*?:)/gm;
+			let m;
+			let out: string = str;
+			while ((m = regex.exec(str)) !== null) {
+				if (m.index === regex.lastIndex) {
+					regex.lastIndex++;
+				}
+
+				m.forEach((match, groupIndex) => {
+
+					if(groupIndex == 1) {
+						let ar = match.split('\n');
+						let idx = ar[0].split("'")[1];
+						let subst = `${String(idx)}:\n${ar[1]}`;
+
+						out = out.split(match).join(subst);
+					}
+				});
+			}
+			out = out.split('  ').join(' ');
+			return out;
+		}
 		toTAML = function(obj: any, lKeys: any) {
 			var h, i, j, key, len, sortKeys;
 			h = {};
@@ -1664,19 +1687,10 @@ class FoodIntakeTracker {
 			});
 		};
 
-		// @ts-ignore
-		fmc[foodIntakeFrontmatterRootField]['3'] = toTAML(fmc[foodIntakeFrontmatterRootField]['3'], ['name', 'amount']);
+		let tmpFMC3 = trimYAML(toTAML(fmc, ['name', 'amount']));
 
-		const doc = new YML.Document();
+		metaEndIdx[1] = tmpFMC3; //doc.toString();
 
-		doc.contents = fmc;
-
-		metaEndIdx[1] = doc.toString();
-
-		metaEndIdx[1] = metaEndIdx[1].replace(/"([\d]+)"/gmi, `$1`);
-		metaEndIdx[1] = metaEndIdx[1].replace(/\n([  ]*)([^\n]+)/gmi, function (match, capture1, capture2) {
-			return `\n${String(' ').repeat(capture1.length / 2)}${capture2}`;
-		});
 		metaEndIdx[1] = metaEndIdx[1].replace(/position:[\W\S]*[ ]{2}offset: [\d]*\n/gm, '');
 		let tmpMetaAr = metaEndIdx[1].split('\n');
 
@@ -1687,7 +1701,6 @@ class FoodIntakeTracker {
 		await this.app.vault.modify(existingFile, fileContent);
 
 		return numberOfEntriesUpdate;
-
 	}
 
 	async getFrontmatterSectionFromFilePath (filePath: string) : Promise<object> {
@@ -3049,7 +3062,7 @@ class GlossaryTester extends Modal {
 			if(i < (questionAnswerArray.length - 1)) {
 				lastCard = 'NO';
 			}
-			console.log(`gotoNext: ${gotoNext} , questionAnswerArray.length: ${questionAnswerArray.length}, i: ${i}`)
+
 			htmlContent += configurationsHTML;
 			htmlContent += `<div class="glossary-status-bar"><span class="glossary-timer-box question-number-${i}">0</span><span class="glossary-progress-box">0</span></div><div class="glossary-controls-wrapper"><button class="glossary-controls previous-question" onclick="window.gotoGlossaryNumber('${gotoPrevious}')">Previous</button><button class="glossary-controls check-answer" data-glossarynumber="${i}" onclick="window.revealCorrectGlossary(this)" >Check</button><button class="glossary-controls next-question bad" onclick="window.gotoGlossaryNumber('${gotoNext}', 'BAD', '${lastCard}')">Bad</button><button class="glossary-controls next-question good" onclick="window.gotoGlossaryNumber('${gotoNext}', 'GOOD', '${lastCard}')">Good</button></div>`
 			htmlContent += `</div>`
@@ -3252,7 +3265,7 @@ class GlossaryTester extends Modal {
 
 			var start = moment(timestamp, "YYYY-MM-DD");
 			var end = moment(currentDate, "YYYY-MM-DD");
-			return Math.round(moment.duration(end.diff(start)).asDays());
+			return -Math.round(moment.duration(end.diff(start)).asDays());
 		}
 
 		for (let idx = 0 ; idx < definitions.length; idx++) {
@@ -3280,12 +3293,24 @@ class GlossaryTester extends Modal {
 			if(scheduledTestingDate && def.frontmatter.glossary_recall.next_recall_test_date) {
 				const fullTimeStamp = `${def.frontmatter.glossary_recall.next_recall_test_date}T00:00:00`;
 
-				console.log(`daysTillNextTest = ${Math.abs(getDaysElapsedSinceLastTest(fullTimeStamp))}`);
-				const daysTillScheduled = Math.abs(getDaysElapsedSinceLastTest(fullTimeStamp));
-				if(daysTillScheduled == 0 ) {
-					priority = priority * 1000;
+				console.log(`${def.frontmatter.term} -- daysTillNextTest = ${getDaysElapsedSinceLastTest(fullTimeStamp)}`);
+				const daysTillScheduled = getDaysElapsedSinceLastTest(fullTimeStamp)
+				let priorityFactor = 1;
+				switch(true) {
+					case (daysTillScheduled == 0):
+						priorityFactor = 500;
+						break;
+					case (daysTillScheduled <= -5 && daysTillScheduled > -10 ):
+						priorityFactor = 700;
+						break;
+					case (daysTillScheduled <= -10):
+						priorityFactor = 1000;
+						break;
+
+					}
+				priority = priority * priorityFactor;
 				}
-			}
+
 
 			// @ts-ignore
 			definitions[idx].priority = priority;
@@ -3359,7 +3384,7 @@ class GlossaryTester extends Modal {
 		if(definitions) {
 
 			let glossaryHTML = this.generateGlossaryTest(definitions, this.maskMode, this.maskPercentage);
-			console.log(glossaryHTML);
+
 			let modalDiv = document.querySelector('.modal-container .modal-content');
 			if(modalDiv) {
 				modalDiv.innerHTML = glossaryHTML;
