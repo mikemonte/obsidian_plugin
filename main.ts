@@ -88,7 +88,7 @@ window.revealCorrectGlossary = function (obj) {
 
 // @ts-ignore
 window.freestyleTextAreaOnFocus = function(textAreaObj, idx) {
-	console.log(textAreaObj);
+
 	let textAreaControls = document.querySelectorAll('.freestyle-answer-controls');
 	for(let i = 0; i < textAreaControls.length; i++) {
 			textAreaControls[i].classList.add('hidden');
@@ -258,7 +258,6 @@ class MikielAPI {
 		let foodItemIndex : any;
 		for(foodItemIndex in foodItems) {
 			let foodItem : FoodItem = foodItems[foodItemIndex];
-			console.log(foodItem);
 			foodMacros[foodItemIndex as keyof object] = await this.foodIntakeTrackerInstance.getMacrosForGivenFoodItem(foodItem["food_item"]);
 		}
 		return foodMacros;
@@ -428,7 +427,7 @@ export default class MyPlugin extends Plugin {
 			name: 'Replace Frontmatter Paths',
 			callback: async () => {
 				glossaryTesterInstance = new GlossaryTester(this.app, [], [], '');
-				console.log(`findReplaceTagsToFilter: ${mikielPluginSettings.plugin.settings.findReplaceTagsToFilter}`)
+
 				let tagArr = mikielPluginSettings.plugin.settings.findReplaceTagsToFilter.split(',');
 				tagArr.forEach((tag: string, idx: number) => {
 					tagArr[idx] = tag.trim();
@@ -441,7 +440,7 @@ export default class MyPlugin extends Plugin {
 				newPropArr.forEach((newProp: string, idx: number) => {
 					newPropArr[idx] = newProp.trim();
 				});
-				console.log(tagArr, propArr, newPropArr);
+
 				await glossaryTesterInstance.updateFrontmatterFieldInFilePath('', tagArr, propArr, newPropArr);
 			}
 		});
@@ -612,12 +611,12 @@ export default class MyPlugin extends Plugin {
 			id: 'mikiel-hide-answers',
 			name: 'Mikiel - Hide Answers',
 			callback: () => {
-				console.log("quick preview");
+
 				document.querySelectorAll('.lc-list-callout').forEach((el) => {
 					let child = el.querySelector('.lc-list-marker');
 					if (child && child.innerHTML && child.innerHTML.trim() == '!') {
 
-						console.log(`~>${child.innerHTML.trim()}<~`)
+
 						el.removeClass('callout-open');
 						el.addClass('callout-closed');
 						el.setAttribute("onclick", "window.toggleCallout(this)");
@@ -630,12 +629,11 @@ export default class MyPlugin extends Plugin {
 		this.registerEvent(
 
 			this.app.workspace.on("file-open", function(obj) {
-				console.log("quick preview");
+
 				document.querySelectorAll('.lc-list-callout').forEach((el) =>{
 					let child = el.querySelector('.lc-list-marker');
 					if(child && child.innerHTML && child.innerHTML.trim() == '!') {
 
-						console.log(`~>${child.innerHTML.trim()}<~`)
 						el.removeClass('callout-open');
 						el.addClass('callout-closed');
 						el.setAttribute("onclick" , "window.toggleCallout(this)");
@@ -694,7 +692,7 @@ export default class MyPlugin extends Plugin {
 			let child = el.querySelector('.lc-list-marker');
 			if(child && child.innerHTML && child.innerHTML.trim() == '!') {
 				//&& child.innerHTML.trim() == '?'
-				console.log(`->${child.innerHTML.trim()}<-`)
+
 				el.addClass('callout-closed');
 				el.setAttribute("onclick" , "window.toggleCallout(this)");
 			}
@@ -2096,15 +2094,9 @@ class GlossaryTester extends Modal {
 			let nextRecallTestDate = frontmatter.glossary_recall.next_recall_test_date;
 			const recallAttemptCount = frontmatter.glossary_recall.recall_attempt_count;
 			const recallSuccessCount = frontmatter.glossary_recall.recall_success_count;
-			console.log(`term: ${frontmatter.term}`);
-			console.log(`next_recall_test_date: ${nextRecallTestDate}`);
-			console.log(`recall_attempt_count: ${recallAttemptCount}`);
-			console.log(`recall_success_count: ${recallSuccessCount}`);
-
 			const daysToWait = this.getDaysTillNextTest(recallAttemptCount, recallSuccessCount);
 			nextRecallTestDate = moment().add(daysToWait, 'days').startOf('day');
 			nextRecallTestDate = moment(nextRecallTestDate).format('YYYY-MM-DD');
-			console.log(`file_path: ${this.glossaryData[i].file_path} action: ${action} calculated next_recall_test_date: ${nextRecallTestDate}`);
 
 			if(action == 'UPDATE') {
 				// @ts-ignore
@@ -2213,21 +2205,21 @@ class GlossaryTester extends Modal {
 			}
 
 		}
-		console.log(existingFiles);
+
 		for(let j= 0; j < existingFiles.length; j++ ) {
 			let fmc = await this.getFrontmatterSectionFromFilePath(files_with_tag[j].path);
-			console.log(fmc, existingFiles[j]);
+
 			// @ts-ignore
 			let fileContent = await this.app.vault.read(existingFiles[j]);
 			let modifiedFmc = null;
 
-			console.log(fileContent);
+
 
 
 			for (let i = 0; i < oldFields.length; i++) {
 				fmc = JSON.parse(JSON.stringify(fmc).split(`"${oldFields[i]}":`).join(`"${newFields[i]}":`));
 			}
-			console.log(fmc);
+
 
 			const YAML = require('yaml');
 
@@ -2236,10 +2228,10 @@ class GlossaryTester extends Modal {
 			delete fmc.position;
 			doc.contents = fmc;
 
-			console.log(`---\n${doc.toString()}\n---\n`);
+
 
 			let fileContentArr = fileContent.split('---\n');
-			console.log(fileContentArr);
+
 			let modifiedFileContent = `---\n${doc.toString()}---\n`
 			if (fileContentArr[0] == '' && fileContentArr[2]) {
 				modifiedFileContent += fileContentArr[2];
@@ -2302,6 +2294,7 @@ class GlossaryTester extends Modal {
 		let variables = field.split('.');
 
 		let file = this.app.vault.getAbstractFileByPath(filePath);
+
 		// @ts-ignore
 		let fileContent = await this.app.vault.read(file);
 
@@ -2332,6 +2325,7 @@ class GlossaryTester extends Modal {
 			}
 		}
 	if(action == 'UPDATE') {
+
 		// @ts-ignore
 		await this.app.vault.modify(file, fileContent);
 	}
@@ -2353,8 +2347,6 @@ class GlossaryTester extends Modal {
 			// @ts-ignore
 			const {update} = this.app.plugins.plugins["metaedit"].api;
 			await update(` ${field}`, value ,file);
-			console.log(`Field:${field} updated with value ${value}.`)
-
 		}
 
 
@@ -2709,8 +2701,7 @@ class GlossaryTester extends Modal {
 			allQuestions[i].classList.add('hidden');
 		}
 		let currentQuestion = document.querySelector(`.question-number-${nextQuestionNumber}`);
-		console.log(`current question selector: .question-number-${nextQuestionNumber}`);
-		console.log('currentQuestion', currentQuestion);
+
 		if(currentQuestion) {
 
 			currentQuestion.classList.remove('hidden');
@@ -3025,7 +3016,7 @@ class GlossaryTester extends Modal {
 		const configurationsHTML = this.getConfigurationHTML(maskMode, maskPercentage);
 		let tagOptions = '';
 		let tagOptionArray = this.getFormattedFilterTags(true);
-		console.log('tagOptionArray', tagOptionArray);
+
 		for(let i = 0; i < tagOptionArray.length; i++) {
 
 			tagOptions += `<option ${(i==0)?"SELECTED":""} >${tagOptionArray[i]}</option>`;
@@ -3090,7 +3081,7 @@ class GlossaryTester extends Modal {
 			return tmpTag.split(',')
 		}
 		let tag = `#${tmpTag.split(',').join(',#')}`;
-		console.log(`tag:${tag}`);
+
 		tag = tag.split(' ').join('');
 		return tag;
 	}
@@ -3146,14 +3137,14 @@ class GlossaryTester extends Modal {
 			}
 
 		}));
-		console.log('::: 1 :::', definitions);
+
 		definitions = this.computeGlossaryUnknownProbability(definitions);
 
-		console.log('::: 2 :::', definitions);
+
 
 		definitions = this.getDefinitionsAccordingToUserPreference(definitions);
 		//shuffleArray(definitions);
-		console.log('::: 3 :::', definitions);
+
 		this.glossaryData = definitions;
 
 
@@ -3293,7 +3284,6 @@ class GlossaryTester extends Modal {
 			if(scheduledTestingDate && def.frontmatter.glossary_recall.next_recall_test_date) {
 				const fullTimeStamp = `${def.frontmatter.glossary_recall.next_recall_test_date}T00:00:00`;
 
-				console.log(`${def.frontmatter.term} -- daysTillNextTest = ${getDaysElapsedSinceLastTest(fullTimeStamp)}`);
 				const daysTillScheduled = getDaysElapsedSinceLastTest(fullTimeStamp)
 				let priorityFactor = 1;
 				switch(true) {
@@ -3363,20 +3353,9 @@ class GlossaryTester extends Modal {
 		let tmpDefs = [...definitions];
 
 		tmpDefs = sortByKey(tmpDefs, 'priority', 'DESCENDING');
-		console.log(tmpDefs);
+
 		pickedDefinitions = tmpDefs.slice(0, (cardsToShow));
-		/*
-		for (let i=0; i < definitions.length; i++ ) {
-			let pointer = randomInteger(0, (tmpDefs.length -1));
-			pickedDefinitions.push(tmpDefs[pointer]);
-			tmpDefs.splice(pointer, 1);
-			cardsPicked = cardsPicked + 1;
-			if(cardsPicked >= cardsToShow) {
-				break;
-			}
-		}
-		*/
-		console.log(pickedDefinitions);
+
 		return pickedDefinitions;
 	}
 
@@ -3430,20 +3409,27 @@ class GlossaryTester extends Modal {
 	}
 
 	async updateDailyNote() {
+
 		let currentDate = moment(Date.now()).format('YYYY-MM-DD');
 		let currentYearMonth = moment(Date.now()).format('YYYY-MM');
-		let dailyFrontmater = await this.getFrontmatterSectionFromFilePath(`Day Planners/${currentYearMonth}/${currentDate}.md`);
+		let currentYear = moment(Date.now()).format('YYYY');
+
+		const filePath = `Day Planners/${currentYear}/${currentYearMonth}/${currentDate}.md`;
+
+		let dailyFrontmater = await this.getFrontmatterSectionFromFilePath(filePath);
+
 		let recallSuccessCount = dailyFrontmater.glossary_recall_session.recall_success_count;
 		let newRecallSuccessCount = recallSuccessCount + this.correctAnswerCount;
-		await this.updatePropertyInFile(`Day Planners/${currentYearMonth}/${currentDate}.md`, 'glossary_recall_session.recall_success_count', newRecallSuccessCount );
+		await this.updatePropertyInFile(filePath, 'glossary_recall_session.recall_success_count', newRecallSuccessCount );
 
 		let sessionCardsAttemptedCount = dailyFrontmater.glossary_recall_session.recall_attempt_count;
 		let newSessionCardsAttemptedCount = sessionCardsAttemptedCount + this.sessionCardsAttemptedCount;
-		await this.updatePropertyInFile(`Day Planners/${currentYearMonth}/${currentDate}.md`, 'glossary_recall_session.recall_attempt_count', newSessionCardsAttemptedCount );
+		await this.updatePropertyInFile(filePath, 'glossary_recall_session.recall_attempt_count', newSessionCardsAttemptedCount );
 
 		let sessionDuration = dailyFrontmater.glossary_recall_session.recall_session_duration;
 		let newSessionDuration = sessionDuration + this.sessionDuration;
-		await this.updatePropertyInFile(`Day Planners/${currentYearMonth}/${currentDate}.md`, 'glossary_recall_session.recall_session_duration', newSessionDuration );
+
+		await this.updatePropertyInFile(filePath, 'glossary_recall_session.recall_session_duration', newSessionDuration );
 
 	}
 
