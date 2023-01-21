@@ -18,7 +18,13 @@
       "ES7"
     ]
   },
+	"scripts": {
+		"tsc": "./node_modules/typescript/bin/tsc"
+	},
   "include": [
     "**/*.ts"
-  ]
+  ],
+	"files": [
+		"test12.ts"
+	]
 }

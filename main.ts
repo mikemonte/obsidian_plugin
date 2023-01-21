@@ -452,13 +452,34 @@ export default class MyPlugin extends Plugin {
 			id: 'mikiel-update-food-data',
 			name: 'Mikiel Update Food Data',
 			callback: async () => {
+				let domain: string = '';
+				let nutritionDataURL: string = '';
 				const foodItemFrontmatterField : string = 'nutritional_information_per_100g';
 				foodIntakeTrackerInstance = new FoodIntakeTracker(this.app);
 				const activeFile = this.app.workspace.getActiveFile();
+				let fmc: any = {};
 
 				if (activeFile && activeFile.path) {
 
-					let fmc = await foodIntakeTrackerInstance.getFoodInventoryItemFrontmatter(activeFile.basename);
+					nutritionDataURL = await foodIntakeTrackerInstance.getFoodInventoryItemFrontmatter(activeFile.basename, 'nutritional_data_source');
+
+					if(nutritionDataURL && typeof nutritionDataURL == 'string') {
+
+						domain = Array.from(nutritionDataURL.matchAll(new RegExp('https:\\/\\/(www.)?([\\w\\-\\.]+)+\\/[\\W\\S]*?', 'gmi')))[0][2];
+					}
+					else{
+						console.log('Please set the nutritional_data_source field to a valid nutrition source url');
+					}
+
+					let foodNutritionData  = await foodIntakeTrackerInstance.getNutritionalData(nutritionDataURL, false, domain);
+
+					console.log(foodNutritionData)
+
+					fmc = await foodIntakeTrackerInstance.getFoodInventoryItemFrontmatter(activeFile.basename, 'nutritional_information_per_100g');
+
+
+					
+					console.log(fmc)
 					for(let i = 0; i < fmc.length; i++) {
 				//		if (fmc[i]["name"] == 'energy') {
 				//			fmc[i]["amount"] = '555';
@@ -476,7 +497,7 @@ export default class MyPlugin extends Plugin {
 					fields.push(`["${foodItemFrontmatterField}"]["1"]["amount"]`);
 					values.push(555);
 
-					const entriesUpdatedCount = await foodIntakeTrackerInstance.updateFrontmatterFoodIntakeProperty(activeFile.path, fields, values, foodItemFrontmatterField, false);
+					const entriesUpdatedCount = await foodIntakeTrackerInstance.updateFrontmatterFoodIntakeProperty(activeFile.path, fields, values, foodItemFrontmatterField, false, true);
 				}
 				//
 			}
@@ -741,6 +762,7 @@ interface PageExtractData {
 	basicMacros: any;
 	error?: string;
 	domain: string;
+	fullNutritionalData: any;
 }
 
 
@@ -750,7 +772,8 @@ const DEFAULT_PAGEEXTRACTDATA: PageExtractData = {
 	title: '',
 	raw_nutritional_data: '',
 	basicMacros: {},
-	domain: ''
+	domain: '',
+	basicMacros: {},
 }
 
 
@@ -801,6 +824,34 @@ class FoodIntakeTracker {
 	 * @param str
 	 */
 	parserNutritionValuePage(str: string | undefined)  {
+
+		function convertToGrams(val: string | number, unit: string) : string  {
+			if(typeof val == 'string') {
+				val = Number(val);
+			}
+
+			if((typeof val == 'string' && isNaN(parseFloat(val))) || val == -1) {
+				val = 0;
+			}
+			switch (unit) {
+				case 'mg':
+					val = 0.001 * val;
+					break;
+				case 'mcg':
+				case 'µg':
+					val = 0.000001 * val;
+					break;
+				case 'g':
+				default:
+			}
+			try {
+				// @ts-ignore
+				val = parseFloat(String(val).match(/(0.[\d]{1,12})0/gm)[0]);
+			}
+			catch(err) {}
+
+			return String(val);
+		}
 		const regex =/(nutrient results([\W\S]*?)<br>|id="calories">([\d]+)<\/td>)/gim;
 
 		var firstPass : Array<any> = [];
@@ -838,7 +889,7 @@ class FoodIntakeTracker {
 					}
 				}
 				if(groupIndex == 3 && sectionCount == 0) {
-					firstPass[sectionCount]["raw_nutritional_data"] = [{ name: 'Calories', value : match, daily_value: '', units: 'kcal' }];
+					firstPass[sectionCount]["raw_nutritional_data"] = [{ name: 'energy', value : match, daily_value: '', units: 'kcal' }];
 				}
 				if (groupIndex == 2) {
 
@@ -920,17 +971,74 @@ class FoodIntakeTracker {
 									case 1:
 										key = 'name';
 										val = match2;
+
 										switch (match2) {
 											case 'Carbohydrate':
-												val = 'Total Carbohydrate';
+												val = 'carbohydrates';
 												break;
 											case 'Fiber':
-												val = 'Dietary Fiber';
+												val = 'fiber';
 												break;
 											case 'Fat':
-												val = 'Total Fat';
+												val = 'fat';
+												break;
+											case 'Vitamin A, RAE':
+												val = 'vitamin_a';
+												break;
+											case 'Thiamin':
+												val = 'vitamin_b1';
+												break;
+											case 'Riboflavin':
+												val = 'vitamin_b2';
+												break;
+											case 'Niacin':
+												val = 'vitamin_b3';
+												break;
+											case 'Pantothenic acid':
+												val = 'vitamin_b5';
+												break;
+											case 'Carotene, alpha':
+												val = 'carotene_alpha';
+												break;
+											case 'Carotene, beta':
+												val = 'carotene_beta';
+												break;
+											case 'Vitamin B12':
+												val = 'vitamin_b12';
+												break;
+											case 'Folate, DFE':
+												val = 'folate';
+												break;
+											case 'Vitamin E (alpha-tocopherol)':
+												val = 'vitamin_e';
+												break;
+											case 'Choline':
+												val = 'choline';
+												break;
+											case 'Calories':
+												val = 'energy';
+												break;
+											case 'Saturated fatty acids':
+												val = 'saturates';
+												break;
+											case 'Monounsaturated fatty acids':
+												val = 'monounsaturated';
+												break;
+											case 'Polyunsaturated fatty acids':
+												val = 'polyunsaturated';
+												break;
+											case 'Docosahexaenoic n-3 acid (DHA)':
+												val = 'DHA';
+												break;
+											case 'Docosapentaenoic n-3 acid (DPA)':
+												val = 'DPA';
+												break;
+											case 'Eicosapentaenoic n-3 acid (EPA)':
+												val = 'EPA';
 												break;
 											default:
+												val = val.toLowerCase();
+												val = val.split(',').join('').split(' ').join('_');
 										}
 										try {
 											if (typeof firstPass[sectionCount]["raw_nutritional_data"][`${dataCount}`] ==
@@ -945,8 +1053,16 @@ class FoodIntakeTracker {
 										break;
 									case 2:
 										let ar = match2.split('&nbsp;');
+
+										let unit = ar[1].trim();
+
+
 										key = 'value';
 										val = ar[0];
+
+										val = convertToGrams(val, unit)
+
+
 										try {
 											if (typeof firstPass[sectionCount]["raw_nutritional_data"][`${dataCount}`] ==
 												'undefined') {
@@ -958,7 +1074,7 @@ class FoodIntakeTracker {
 										}
 
 										key = 'units';
-										val = ar[1];
+										val = 'g';
 										try {
 											if (typeof firstPass[sectionCount]["raw_nutritional_data"][`${dataCount}`] ==
 												'undefined') {
@@ -986,6 +1102,29 @@ class FoodIntakeTracker {
 	 * @param str
 	 */
 	parseNutritionDataSelfPage(str: string | undefined)  {
+
+		function convertToGrams(val: string | number, unit: string) {
+			if(typeof val == 'string') {
+				val = Number(val);
+			}
+
+			if((typeof val == 'string' && isNaN(parseFloat(val))) || val == -1) {
+				val = 0;
+			}
+			switch (unit) {
+				case 'mg':
+					val = 0.001 * val;
+					break;
+				case 'mcg':
+				case 'µg':
+					val = 0.000001 * val;
+					break;
+				case 'g':
+				default:
+			}
+
+			return val;
+		}
 		const regex = /.*"c01">[Calorie Information|Carbohydrates|Fats &amp; Fatty Acids|Protein &amp; Amino Acids|Vitamins|Minerals|Sterols|Other]+<\/div>[\W\S]*?<div class="clearer">([\W\S.]*?)<(br class="clearer"|\/table|div class="groupBorder")>+/gm;
 
 		var firstPass : Array<any> = [];
@@ -1097,6 +1236,7 @@ class FoodIntakeTracker {
 												firstPass[sectionCount]["raw_nutritional_data"][`${dataCount}`] = {};
 											}
 											let val = match2.split('</span>').join('');
+											//val = convertToGrams(val, unit);
 											firstPass[sectionCount]["raw_nutritional_data"][`${dataCount}`][`${key}`] = val;
 										}
 										catch(err) {}
@@ -1214,7 +1354,7 @@ class FoodIntakeTracker {
 							}
 							switch (nutritionData[i]["raw_nutritional_data"][entry]["name"]) {
 								case 'Total Carbohydrate':
-									key = 'total_carbohydrates'
+									key = 'carbohydrates'
 									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
 									break;
 								case 'Dietary Fiber':
@@ -1381,7 +1521,8 @@ class FoodIntakeTracker {
 			title: '',
 			domain: domain,
 			raw_nutritional_data: '',
-			basicMacros: {}
+			basicMacros: {},
+			fullNutritionalData: {}
 		};
 		pageData["url"] = sourceURL;
 		const browser = await puppeteer.launch({
@@ -1415,7 +1556,8 @@ class FoodIntakeTracker {
 							status: '',
 							title: '',
 							raw_nutritional_data: '',
-							basicMacros: {}
+							basicMacros: {},
+							fullNutritionalData: {}
 						};
 						let foodTitleEl = document.querySelector(
 							'#food-name');
@@ -1455,7 +1597,8 @@ class FoodIntakeTracker {
 						status: '',
 						title: '',
 						raw_nutritional_data: '',
-						basicMacros: {}
+						basicMacros: {},
+						fullNutritionalData: {}
 					};
 					let foodTitleEl = document.querySelector(
 						'#facts_header .facts-heading');
@@ -1476,16 +1619,21 @@ class FoodIntakeTracker {
 			default:
 		}
 
+		let fullNutritionalData;
 		switch (domain) {
 			case 'nutritionvalue.org':
-				pageData["basicMacros"] = this.extractBasicMacrosFromNutritionData(this.parserNutritionValuePage(pageData["raw_nutritional_data"]));
+				fullNutritionalData = this.parserNutritionValuePage(pageData["raw_nutritional_data"]);
+				pageData["basicMacros"] = this.extractBasicMacrosFromNutritionData(fullNutritionalData);
 				break;
 			case 'nutritiondata.self.com':
-				pageData["basicMacros"] = this.extractBasicMacrosFromNutritionData(this.parseNutritionDataSelfPage(pageData["raw_nutritional_data"]));
+				fullNutritionalData = this.parseNutritionDataSelfPage(pageData["raw_nutritional_data"]);
+				pageData["basicMacros"] = this.extractBasicMacrosFromNutritionData(fullNutritionalData);
 				break;
 			default:
 
 		}
+
+		pageData["fullNutritionalData"] = fullNutritionalData;
 
 		if(includeRawHTML === false ) {
 			delete pageData["raw_nutritional_data"];
@@ -1517,12 +1665,11 @@ class FoodIntakeTracker {
 	 *
 	 *
 	 */
-	async getFoodInventoryItemFrontmatter(foodItemName: string) : Promise<any> {
+	async getFoodInventoryItemFrontmatter(foodItemName: string, foodItemFrontmatterField : string = 'nutritional_information_per_100g') : Promise<any> {
 		if (foodItemName.indexOf('.md') == -1) {
 			foodItemName = `${foodItemName.trim()}.md`;
 		}
 		const foodInventoryFolderPath : string = 'Inventory/Foods/';
-		const foodItemFrontmatterField : string = 'nutritional_information_per_100g';
 
 		let foodItemFrontmatter: object = {};
 		let foodInventoryItemPath = `${foodInventoryFolderPath}${foodItemName.trim()}`;
@@ -1545,7 +1692,7 @@ class FoodIntakeTracker {
 	 * @param fields
 	 * @param values
 	 */
-	async updateFrontmatterFoodIntakeProperty(filePath: string, fields: Array<string>, values: Array<string> = [], foodIntakeFrontmatterRootField: string, resetOriginalData: boolean = true) : Promise<number> {
+	async updateFrontmatterFoodIntakeProperty(filePath: string, fields: Array<string>, values: Array<string> = [], foodIntakeFrontmatterRootField: string, resetOriginalData: boolean = true, forceTrimYAML: boolean = true) : Promise<number> {
 
 		let numberOfEntriesUpdate: number = 0;
 		let fileContent: string = "";
@@ -1626,7 +1773,9 @@ class FoodIntakeTracker {
 		};
 
 		trimYAML = function(str: string) : string {
-			const regex = /('([\d])+':[\W\S]*?([\ ]+)[a-z]*?:)/gm;
+
+			const regex = /('([\d])+':[\W\S]*?([\ ]+)[a-z]*?:)/gmi;
+			//const regex = /('([\d])+':[\W\S]*?([\ ]+)[\w\s\ ]*?: [\w\n\ :]*[']?[\w]*[']?)/gmi
 			let m;
 			let out: string = str;
 			while ((m = regex.exec(str)) !== null) {
@@ -1637,7 +1786,9 @@ class FoodIntakeTracker {
 				m.forEach((match, groupIndex) => {
 
 					if(groupIndex == 1) {
+
 						let ar = match.split('\n');
+
 						let idx = ar[0].split("'")[1];
 						let subst = `${String(idx)}:\n${ar[1]}`;
 
@@ -1685,7 +1836,11 @@ class FoodIntakeTracker {
 			});
 		};
 
-		let tmpFMC3 = trimYAML(toTAML(fmc, ['name', 'amount']));
+		let tmpFMC3 = toTAML(fmc, ['name', 'amount']);
+
+		if(forceTrimYAML === true) {
+			tmpFMC3 = trimYAML(tmpFMC3);
+		}
 
 		metaEndIdx[1] = tmpFMC3; //doc.toString();
 
@@ -1777,7 +1932,7 @@ class FoodIntakeTracker {
 
 
 		if (activeFile && activeFile.path) {
-			entriesUpdatedCount = await this.updateFrontmatterFoodIntakeProperty(activeFile.path, fields, values, foodTrackerFrontmatterAnchor);
+			entriesUpdatedCount = await this.updateFrontmatterFoodIntakeProperty(activeFile.path, fields, values, foodTrackerFrontmatterAnchor, true, false);
 		}
     return entriesUpdatedCount;
 	}
