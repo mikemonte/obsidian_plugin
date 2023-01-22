@@ -473,29 +473,29 @@ export default class MyPlugin extends Plugin {
 
 					let foodNutritionData  = await foodIntakeTrackerInstance.getNutritionalData(nutritionDataURL, false, domain);
 
+					console.log('======= foodNutritionData =====')
 					console.log(foodNutritionData)
 
 					fmc = await foodIntakeTrackerInstance.getFoodInventoryItemFrontmatter(activeFile.basename, 'nutritional_information_per_100g');
 
+					console.log('======= fmc  =====')
+					console.log(fmc);
+					let fieldsAndValues = foodIntakeTrackerInstance.getFieldValieMapping(foodNutritionData, fmc);
 
-					
-					console.log(fmc)
-					for(let i = 0; i < fmc.length; i++) {
-				//		if (fmc[i]["name"] == 'energy') {
-				//			fmc[i]["amount"] = '555';
-				//		}
-					}
+					console.log('======= fieldsAndValues  =====')
+					console.log(fieldsAndValues);
 
-
-					let fields = [];
-					let values = [];
+					let fields = fieldsAndValues["fields"];
+					let values = fieldsAndValues["values"];
 
 
-					let keysIdx = 0;
+					/*
 					fields.push(`["${foodItemFrontmatterField}"]["1"]["name"]`);
 					values.push('energy');
 					fields.push(`["${foodItemFrontmatterField}"]["1"]["amount"]`);
 					values.push(555);
+
+					*/
 
 					const entriesUpdatedCount = await foodIntakeTrackerInstance.updateFrontmatterFoodIntakeProperty(activeFile.path, fields, values, foodItemFrontmatterField, false, true);
 				}
@@ -816,6 +816,137 @@ class FoodIntakeTracker {
 	constructor(app: App) {
 		this.app = app;
 	}
+
+	/**
+	 *
+	 * @param foodNutritionData
+	 * @param frontMatterContent
+	 */
+	getFieldValieMapping(foodNutritionData: any, nutritionalInformationFrontMatter: object) {
+		let nutritionData = {};
+		for (let foodNutritionDataKey in foodNutritionData['fullNutritionalData']) {
+			if(foodNutritionData['fullNutritionalData'][foodNutritionDataKey]) {
+				// @ts-ignore
+				const rawData = foodNutritionData['fullNutritionalData'][foodNutritionDataKey]['raw_nutritional_data'];
+				for (let rawDataKey in rawData) {
+					// @ts-ignore
+					nutritionData[rawData[rawDataKey]["name"]] = rawData[rawDataKey]["value"];
+				}
+			}
+		}
+
+		console.log(nutritionData);
+
+		let fieldsAndValues = this.walkObject(nutritionalInformationFrontMatter, nutritionalInformationFrontMatter, nutritionData, [], []);
+		console.log(fieldsAndValues);
+		return fieldsAndValues;
+	}
+
+	/**
+	 *
+	 * @param obj
+	 * @param originalData
+	 * @param nutritionData
+	 * @param outputFields
+	 * @param outputValues
+	 */
+	 walkObject(obj: object, originalData: object, nutritionData: object, outputFields: Array<any>, outputValues: Array<any>) {
+		const foodItemFrontmatterField : string = 'nutritional_information_per_100g';
+		for (let key in obj) {
+			if (obj.hasOwnProperty(key)) {
+
+				// @ts-ignore
+				if (obj && typeof obj[key] === "string") {
+
+					// @ts-ignore
+					let node = this.searchValue(originalData, key, obj[key], '', 0, nutritionData);
+
+					let loc = node["location"];
+					loc = (loc.length > 0)?loc:node["path"];
+
+					loc = loc.substring(1, loc.length-1).split('b').join('');
+
+					loc = loc.split('-').join('"]["');
+					outputFields.push(`["${foodItemFrontmatterField}"]["${loc}"]["name"]`);
+					// @ts-ignore
+					outputValues.push(obj[key]);
+					outputFields.push(`["${foodItemFrontmatterField}"]["${loc}"]["amount"]`);
+					let fieldVal = '0';
+					if(node["val"]) {
+						fieldVal = node["val"];
+					}
+					outputValues.push(fieldVal);
+
+
+				}
+				// @ts-ignore
+				if (obj && typeof obj[key] === "object") {
+					// @ts-ignore
+					this.walkObject(obj[key], originalData, nutritionData, outputFields, outputValues);
+				}
+			}
+		}
+		return { "fields": outputFields, "values": outputValues}
+	}
+
+
+	/**
+	 *
+	 * @param obj
+	 * @param key
+	 * @param value
+	 * @param path
+	 * @param node
+	 * @param nutritionData
+	 */
+	searchValue(obj: any, key: string, value: string, path: string='', node: number = 0, nutritionData: any) : any {
+
+		if (!obj || (typeof obj != 'object')) {
+			path = `${path}-${key}a`;
+			return {"state" :false, "obj": {}, val: 0, "path": path, "location": "a"};
+		}
+		if (obj[key] === value) {
+			// @ts-ignore
+			if(!isNaN(key)) {
+				path = `${path}-${key}d`;
+			}
+			return {"state" :true, "obj": obj[key], val: obj["value"],"key": key, "path": path, "location": "d"};
+		}
+		for (const k in obj) {
+			if (obj.hasOwnProperty(k)) {
+				// @ts-ignore
+				if(!isNaN(k)) {
+					if (Number(k) > Number(node)) {
+						node = Number(k);
+					} else {
+						path = `${path}-${node}b`;
+						node = 0;
+					}
+				}
+				let res = this.searchValue(obj[k], key, value, path, node, nutritionData);
+
+				// @ts-ignore
+				if (res["state"] === true) {
+					node = (node==0)?1:node;
+					path = `${path}-${node}b`;
+					let loc = res["path"];;
+					if(res["location"] && res["location"].substr(res["location"].length-1, 1) != 'd') {
+						loc = res["path"];
+						if (res["obj"]["location"]  && res["obj"]["location"].substr(res["obj"]["location"].length-1, 1) != 'd') {
+							loc = res["obj"]["path"];
+							if (res["obj"]["obj"]["location"]  && res["obj"]["obj"]["location"].substr(res["obj"]["obj"]["location"].length-1, 1) != 'd') {
+								loc = res["obj"]["obj"]["path"];
+							}
+						}
+					}
+					return {"state" :true, "obj": res, val: nutritionData[value], "key": k, "path": path,  "location": loc};
+				}
+			}
+		}
+		path = `${path}-${key}c`;
+		return {"state" :false, "obj": obj[key], val: obj["value"], "key": key,"path": path,  "location": "c"};
+	}
+
 
 	/**
 	 * parseNutritionDataSelfPage
@@ -1709,6 +1840,8 @@ class FoodIntakeTracker {
 
 		let fmc = await this.getFrontmatterSectionFromFilePath(filePath);
 
+		console.log('======= Full FMC ========');
+		console.log(fmc);
 		// TODO find alternative way to do this as EVAL is not safe
 		if(resetOriginalData === true) {
 			eval(`fmc["${foodIntakeFrontmatterRootField}"] = {};`);

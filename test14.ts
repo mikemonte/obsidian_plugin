@@ -829,8 +829,6 @@ function walkObject(obj: object, originalData: object, nutritionData: object, ou
 			if (obj && typeof obj[key] === "string") {
 
 				// @ts-ignore
-				//console.log(`key: ${key} value: ${obj[key]}`);
-				// @ts-ignore
 				let node = searchValue(originalData, key, obj[key], '', 0, nutritionData);
 
 				let loc = node["location"];
