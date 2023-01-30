@@ -1840,8 +1840,7 @@ class FoodIntakeTracker {
 
 		let fmc = await this.getFrontmatterSectionFromFilePath(filePath);
 
-		console.log('======= Full FMC ========');
-		console.log(fmc);
+
 		// TODO find alternative way to do this as EVAL is not safe
 		if(resetOriginalData === true) {
 			eval(`fmc["${foodIntakeFrontmatterRootField}"] = {};`);
@@ -1850,14 +1849,20 @@ class FoodIntakeTracker {
 		let testValue = null;
 		let testKey = '';
 		for (let i = 0; i < fields.length; i++) {
+			let val = String(values[i]);
+			// @ts-ignore
+			if(!isNaN(val)) {
+				val = `'${val}'`
+			}
+
 			try {
 				// TODO find alternative way to do this as EVAL is not safe
 				eval(`testValue = fmc${fields[i]};`);
 				try {
-					eval(`fmc${fields[i]} = ${values[i]};`);
+					eval(`fmc${fields[i]} = ${val};`);
 				}
 				catch(err) {
-					eval(`fmc${fields[i]} = '${values[i]}';`);
+					eval(`fmc${fields[i]} = '${val}';`);
 				}
 				numberOfEntriesUpdate++;
 			} catch (error) {
@@ -1873,10 +1878,10 @@ class FoodIntakeTracker {
 							// TODO find alternative way to do this as EVAL is not safe
 							eval(`fmc${testKey} = {}`);
 							try {
-								eval(`fmc${fields[i]} = ${values[i]};`);
+								eval(`fmc${fields[i]} = ${val};`);
 							}
 							catch(err) {
-								eval(`fmc${fields[i]} = '${values[i]}';`);
+								eval(`fmc${fields[i]} = '${val}';`);
 							}
 							numberOfEntriesUpdate++;
 						}
@@ -1887,6 +1892,7 @@ class FoodIntakeTracker {
 				}
 			}
 		}
+
 
 		// @ts-ignore
 		var compareFunc, toTAML, trimYAML;
@@ -1905,27 +1911,51 @@ class FoodIntakeTracker {
 			}
 		};
 
-		trimYAML = function(str: string) : string {
+		trimYAML = function(str: string, wrapperChar: string = "'") : string {
 
-			const regex = /('([\d])+':[\W\S]*?([\ ]+)[a-z]*?:)/gmi;
-			//const regex = /('([\d])+':[\W\S]*?([\ ]+)[\w\s\ ]*?: [\w\n\ :]*[']?[\w]*[']?)/gmi
+
+			const regex = /('([\d])+':[\W\S]*?([\ ]+)([\w\s\ ]*?: [\w\n\ :]*[']?[\w]*[']){1,4})/gmi;
 			let m;
 			let out: string = str;
 			while ((m = regex.exec(str)) !== null) {
 				if (m.index === regex.lastIndex) {
 					regex.lastIndex++;
 				}
-
+				let fieldName = '';
+				let valueContent = '';
+				let substitutionFind = '';
+				let substitutionReplace = '';
+				let fieldWrapperChar = '';
+				let valueWrapperChar = '';
 				m.forEach((match, groupIndex) => {
 
 					if(groupIndex == 1) {
-
 						let ar = match.split('\n');
-
-						let idx = ar[0].split("'")[1];
-						let subst = `${String(idx)}:\n${ar[1]}`;
-
-						out = out.split(match).join(subst);
+						for(let r=1; r < ar.length; r++) {
+							let subAr = ar[r].split(':');
+							valueContent = subAr[1];
+							fieldName = subAr[0];
+							if(fieldName.indexOf("'") != -1) { // field is wrapped in single quotes
+								fieldWrapperChar = "'";
+							}
+							else if (valueContent.indexOf('"') != -1) { // field is wrapped in double quotes
+								fieldWrapperChar = '"';
+							}
+							if(valueContent.indexOf("'") != -1) { // value is wrapped in single quotes
+								valueWrapperChar = "'";
+							}
+							else if (fieldName.indexOf('"') != -1) { // value is wrapped in double quotes
+								valueWrapperChar = '"';
+							}
+							fieldName = subAr[0].trim().split("'").join('').split('"').join('');
+							valueContent = subAr[1].trim().split("'").join('').split('"').join('');
+							// at this point we have the stripped field and the stripped value
+							// we can now do any modifications required to both
+							// in this case we will wrap the stripped field and value with a single quote
+							substitutionFind = `${fieldWrapperChar}${fieldName}${fieldWrapperChar}: ${valueWrapperChar}${valueContent}${valueWrapperChar}`;
+							substitutionReplace = `${wrapperChar}${fieldName}${wrapperChar}: ${wrapperChar}${valueContent}${wrapperChar}`;
+							out = out.split(substitutionFind).join(substitutionReplace);
+						}
 					}
 				});
 			}
@@ -1971,7 +2001,8 @@ class FoodIntakeTracker {
 
 		let tmpFMC3 = toTAML(fmc, ['name', 'amount']);
 
-		if(forceTrimYAML === true) {
+		if(forceTrimYAML) {
+
 			tmpFMC3 = trimYAML(tmpFMC3);
 		}
 
@@ -1982,7 +2013,7 @@ class FoodIntakeTracker {
 
 		metaEndIdx[1] = `${tmpMetaAr.join('\n')}\n`;
 		metaEndIdx[1] = metaEndIdx[1].split('|').join('');
-		fileContent = `${metaEndIdx.join('---\n')}`;
+		fileContent = `${metaEndIdx.join('---\n')}`; 
 
 		await this.app.vault.modify(existingFile, fileContent);
 
@@ -2044,6 +2075,8 @@ class FoodIntakeTracker {
 
 		foodIntakeData = this.getCurrentNoteFoodIntakeData();
 
+		console.log(' ===== foodIntakeData  =======')
+		console.log(foodIntakeData);
 
 		const activeFile = this.app.workspace.getActiveFile();
 
@@ -2062,10 +2095,11 @@ class FoodIntakeTracker {
 				keysIdx++;
 			}
 		}
-
+		console.log('============ VALUES ============');
+		console.log(values);
 
 		if (activeFile && activeFile.path) {
-			entriesUpdatedCount = await this.updateFrontmatterFoodIntakeProperty(activeFile.path, fields, values, foodTrackerFrontmatterAnchor, true, false);
+			entriesUpdatedCount = await this.updateFrontmatterFoodIntakeProperty(activeFile.path, fields, values, foodTrackerFrontmatterAnchor, true, true);
 		}
     return entriesUpdatedCount;
 	}
