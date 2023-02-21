@@ -161,6 +161,15 @@ window.revealCorrectAnswers = function( ){
 
 }
 
+interface FoodMacroData {
+	name: string;
+	calories: number;
+}
+
+const DEFAULT_FOODMACRODATA: FoodMacroData = {
+	name: 'food item',
+	calories: 0
+}
 
 interface FoodItem {
 	time: string;
@@ -261,6 +270,24 @@ class MikielAPI {
 			foodMacros[foodItemIndex as keyof object] = await this.foodIntakeTrackerInstance.getMacrosForGivenFoodItem(foodItem["food_item"]);
 		}
 		return foodMacros;
+	}
+
+	/**
+	 * getMacrosForNamedFoodItem
+	 * returns a json object with macro values for specified food item
+	 * {
+	 *     name: name of food item
+	 *     calories: calories per 100g
+	 * }
+	 *
+	 * @param foodItemName - name of the food item (this must exist inside /Inventory/Foods/ folder
+	 * @param amount - number of grams of the food item
+	 */
+	async getMacrosForNamedFoodItem(foodItemName: string, amount: number) : Promise<FoodMacroData> {
+		let macros = await this.foodIntakeTrackerInstance.getMacrosForGivenFoodItem(foodItemName);
+		console.log('======= MACROS =========');
+		console.log(macros);
+		return DEFAULT_FOODMACRODATA;
 	}
 
 	/**
@@ -480,26 +507,15 @@ export default class MyPlugin extends Plugin {
 
 					console.log('======= fmc  =====')
 					console.log(fmc);
-					let fieldsAndValues = foodIntakeTrackerInstance.getFieldValieMapping(foodNutritionData, fmc);
+					let fieldsAndValues = foodIntakeTrackerInstance.getFieldValueMapping(foodNutritionData, fmc);
 
 					console.log('======= fieldsAndValues  =====')
 					console.log(fieldsAndValues);
 
 					let fields = fieldsAndValues["fields"];
 					let values = fieldsAndValues["values"];
-
-
-					/*
-					fields.push(`["${foodItemFrontmatterField}"]["1"]["name"]`);
-					values.push('energy');
-					fields.push(`["${foodItemFrontmatterField}"]["1"]["amount"]`);
-					values.push(555);
-
-					*/
-
-					const entriesUpdatedCount = await foodIntakeTrackerInstance.updateFrontmatterFoodIntakeProperty(activeFile.path, fields, values, foodItemFrontmatterField, false, true);
+					const entriesUpdatedCount = await foodIntakeTrackerInstance.updateFrontmatterFoodIntakeProperty(activeFile.path, fields, values, foodItemFrontmatterField, false, false);
 				}
-				//
 			}
 		});
 
@@ -822,7 +838,7 @@ class FoodIntakeTracker {
 	 * @param foodNutritionData
 	 * @param frontMatterContent
 	 */
-	getFieldValieMapping(foodNutritionData: any, nutritionalInformationFrontMatter: object) {
+	getFieldValueMapping(foodNutritionData: any, nutritionalInformationFrontMatter: object) {
 		let nutritionData = {};
 		for (let foodNutritionDataKey in foodNutritionData['fullNutritionalData']) {
 			if(foodNutritionData['fullNutritionalData'][foodNutritionDataKey]) {
@@ -1781,13 +1797,17 @@ class FoodIntakeTracker {
 	 *
 	 *
 	 */
-	async getMacrosForGivenFoodItem (foodItemName: string) : Promise<FoodMacro> {
+	async getMacrosForGivenFoodItem (foodItemName: string) : Promise<FoodMacroData> {
 
-		let foodItemMacro : FoodMacro = DEFAULT_FOODMACRO;
+		let foodItemMacro : FoodMacroData = DEFAULT_FOODMACRODATA;
 
+		let fmc = await this.getFoodInventoryItemFrontmatter(foodItemName);
 
-
-
+		foodItemMacro.name = foodItemName
+		console.log(fmc);
+		if(fmc["energy"]) {
+			foodItemMacro.calories = fmc["energy"];
+		}
 		return foodItemMacro;
 	}
 
@@ -1935,20 +1955,24 @@ class FoodIntakeTracker {
 							let subAr = ar[r].split(':');
 							valueContent = subAr[1];
 							fieldName = subAr[0];
-							if(fieldName.indexOf("'") != -1) { // field is wrapped in single quotes
+							if(fieldName && fieldName.indexOf("'") != -1) { // field is wrapped in single quotes
 								fieldWrapperChar = "'";
 							}
-							else if (valueContent.indexOf('"') != -1) { // field is wrapped in double quotes
+							else if (fieldName && fieldName.indexOf('"') != -1) { // field is wrapped in double quotes
 								fieldWrapperChar = '"';
 							}
-							if(valueContent.indexOf("'") != -1) { // value is wrapped in single quotes
+							if(valueContent && valueContent.indexOf("'") != -1) { // value is wrapped in single quotes
 								valueWrapperChar = "'";
 							}
-							else if (fieldName.indexOf('"') != -1) { // value is wrapped in double quotes
+							else if (valueContent && valueContent.indexOf('"') != -1) { // value is wrapped in double quotes
 								valueWrapperChar = '"';
 							}
-							fieldName = subAr[0].trim().split("'").join('').split('"').join('');
-							valueContent = subAr[1].trim().split("'").join('').split('"').join('');
+							if(subAr[0]) {
+								fieldName = subAr[0].trim().split("'").join('').split('"').join('');
+							}
+							if(subAr[1]) {
+								valueContent = subAr[1].trim().split("'").join('').split('"').join('');
+							}
 							// at this point we have the stripped field and the stripped value
 							// we can now do any modifications required to both
 							// in this case we will wrap the stripped field and value with a single quote
