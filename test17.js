@@ -102,7 +102,7 @@ const fmc = {
 	},
 	"7": {
 		"name": "vitamin_b7",
-			"amount": 0
+			"amount": 330
 	},
 	"8": {
 		"name": "vitamin_b9",
@@ -248,7 +248,7 @@ const fmc = {
 				"amount": 0.686
 		},
 		"8": {
-			"name": "leucine",
+			"name": "energy",
 				"amount": 1.075
 		},
 		"9": {
@@ -304,40 +304,53 @@ const fmc = {
 }
 
 
-function searchJsonKey(jsonObj, searchTerm) {
+function searchJsonKey(jsonObj, searchTerm, returnValueForKey="amount") {
+	console.log(`searchTerm=${searchTerm}`)
 	const results = [];
 
-	function search(jsonObj, searchTerm) {
+	function search(jsonObj, searchTerm, returnValueForKey) {
 		for (const key in jsonObj) {
 			const value = jsonObj[key];
 
 			if (key === searchTerm) {
-				results.push({ key, value });
+				results.push({ key: key, value: value, amount: jsonObj[returnValueForKey] });
 			}
 
 			if (typeof value === 'object') {
-				search(value, searchTerm);
+				search(value, searchTerm,returnValueForKey);
 			}
 		}
 	}
 
-	search(jsonObj, searchTerm);
+	search(jsonObj, searchTerm, returnValueForKey);
 
 	return results;
 }
 
-function searchJsonKeyValuePair(jsonObj, key, value) {
+function searchJsonKeyValuePair(jsonObj, key, values, returnValueForKey ) {
 	let result = [];
-	let keyValuePairs = searchJsonKey(jsonObj, key);
-	for(let i = 0; i < keyValuePairs.length; i++) {
-		if(keyValuePairs[i]["key"] == key && keyValuePairs[i]["value"] == value ) {
-			result.push(keyValuePairs[i]["value"])
+
+	for(let j = 0; j < values.length; j++) {
+		let keyValuePairs = searchJsonKey(jsonObj, key, returnValueForKey);
+		console.log(keyValuePairs)
+		let out = {};
+		for (let i = 0; i < keyValuePairs.length; i++) {
+			console.log(`==>${keyValuePairs[i]["key"]} == ${values[j]} && ${keyValuePairs[i]["value"]} == ${values[j]}`)
+			if (keyValuePairs[i]["key"] == key && keyValuePairs[i]["value"] == values[j]) {
+				out[`${keyValuePairs[i]["value"]}`] = `${keyValuePairs[i][returnValueForKey]}`;
+				result.push(out)
+			}
 		}
 	}
 	return result;
 
 }
 
-const results = searchJsonKeyValuePair(fmc, "name", "energy");
+
+
+let keyValuePairs = searchJsonKey(fmc, "name", "amount");
+console.log(keyValuePairs);
+
+const results = searchJsonKeyValuePair(fmc, "name", ["energy","vitamin_b7"], "amount");
 console.log(results);
 
