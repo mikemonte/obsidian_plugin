@@ -164,11 +164,25 @@ window.revealCorrectAnswers = function( ){
 interface FoodMacroData {
 	name: string;
 	calories: number;
+	protein: number;
+	carbohydrates: number;
+	sugar: number;
+	fiber: number;
+	fat: number;
+	saturates: number;
+	sodium: number;
 }
 
 const DEFAULT_FOODMACRODATA: FoodMacroData = {
 	name: 'food item',
-	calories: 0
+	calories: 0,
+	protein: 0,
+	carbohydrates: 0,
+	sugar: 0,
+	fiber: 0,
+	fat: 0,
+	saturates: 0,
+	sodium: 0
 }
 
 interface FoodItem {
@@ -267,7 +281,7 @@ class MikielAPI {
 		let foodItemIndex : any;
 		for(foodItemIndex in foodItems) {
 			let foodItem : FoodItem = foodItems[foodItemIndex];
-			foodMacros[foodItemIndex as keyof object] = await this.foodIntakeTrackerInstance.getMacrosForGivenFoodItem(foodItem["food_item"]);
+			foodMacros[foodItemIndex as keyof object] = await this.foodIntakeTrackerInstance.getMacrosForGivenFoodItem(foodItem["food_item"], 100);
 		}
 		return foodMacros;
 	}
@@ -284,10 +298,8 @@ class MikielAPI {
 	 * @param amount - number of grams of the food item
 	 */
 	async getMacrosForNamedFoodItem(foodItemName: string, amount: number) : Promise<FoodMacroData> {
-		let macros = await this.foodIntakeTrackerInstance.getMacrosForGivenFoodItem(foodItemName);
-		console.log('======= MACROS =========');
-		console.log(macros);
-		return DEFAULT_FOODMACRODATA;
+		let macros = await this.foodIntakeTrackerInstance.getMacrosForGivenFoodItem(foodItemName, amount);
+		return macros;
 	}
 
 	/**
@@ -850,9 +862,10 @@ class FoodIntakeTracker {
 				}
 			}
 		}
-
-		console.log(nutritionData);
-
+		console.log('=====>>>  nutritionalInformationFrontMatter <=======')
+		console.log(nutritionalInformationFrontMatter)
+		console.log('=====>>>  nutritionData <=======')
+		console.log(nutritionData)
 		let fieldsAndValues = this.walkObject(nutritionalInformationFrontMatter, nutritionalInformationFrontMatter, nutritionData, [], []);
 		console.log(fieldsAndValues);
 		return fieldsAndValues;
@@ -867,7 +880,7 @@ class FoodIntakeTracker {
 	 * @param outputValues
 	 */
 	 walkObject(obj: object, originalData: object, nutritionData: object, outputFields: Array<any>, outputValues: Array<any>) {
-		const foodItemFrontmatterField : string = 'nutritional_information_per_100g';
+		const foodItemFrontmatterField = 'nutritional_information_per_100g';
 		for (let key in obj) {
 			if (obj.hasOwnProperty(key)) {
 
@@ -883,20 +896,19 @@ class FoodIntakeTracker {
 					loc = loc.substring(1, loc.length-1).split('b').join('');
 
 					loc = loc.split('-').join('"]["');
-					outputFields.push(`["${foodItemFrontmatterField}"]["${loc}"]["name"]`);
-					// @ts-ignore
-					outputValues.push(obj[key]);
-					outputFields.push(`["${foodItemFrontmatterField}"]["${loc}"]["amount"]`);
-					let fieldVal = '0';
 					if(node["val"]) {
-						fieldVal = node["val"];
-					}
-					outputValues.push(fieldVal);
+						outputFields.push(`["${foodItemFrontmatterField}"]["${loc}"]["name"]`);
+						// @ts-ignore
+						outputValues.push(obj[key]);
+						outputFields.push(`["${foodItemFrontmatterField}"]["${loc}"]["amount"]`);
 
+						outputValues.push(node["val"]);
+					}
 
 				}
 				// @ts-ignore
 				if (obj && typeof obj[key] === "object") {
+					//console.log(obj[key])
 					// @ts-ignore
 					this.walkObject(obj[key], originalData, nutritionData, outputFields, outputValues);
 				}
@@ -928,6 +940,7 @@ class FoodIntakeTracker {
 			}
 			return {"state" :true, "obj": obj[key], val: obj["value"],"key": key, "path": path, "location": "d"};
 		}
+
 		for (const k in obj) {
 			if (obj.hasOwnProperty(k)) {
 				// @ts-ignore
@@ -939,8 +952,8 @@ class FoodIntakeTracker {
 						node = 0;
 					}
 				}
-				let res = this.searchValue(obj[k], key, value, path, node, nutritionData);
 
+				let res = this.searchValue(obj[k], key, value, path, node, nutritionData);
 				// @ts-ignore
 				if (res["state"] === true) {
 					node = (node==0)?1:node;
@@ -959,8 +972,9 @@ class FoodIntakeTracker {
 				}
 			}
 		}
+
 		path = `${path}-${key}c`;
-		return {"state" :false, "obj": obj[key], val: obj["value"], "key": key,"path": path,  "location": "c"};
+		return {"state" :false, "obj": obj[key], val: obj["value"], "key": key,"path": path,  "location": "x"};
 	}
 
 
@@ -999,7 +1013,7 @@ class FoodIntakeTracker {
 
 			return String(val);
 		}
-		const regex =/(nutrient results([\W\S]*?)<br>|id="calories">([\d]+)<\/td>)/gim;
+		const regex =/(nutrient results([\W\S]*?)<table class="center wide cellpadding3 |id="calories">([\d]+)<\/td>)/gim;
 
 		var firstPass : Array<any> = [];
 
@@ -1458,33 +1472,52 @@ class FoodIntakeTracker {
 
 			return val;
 		}
+		console.log('===== nutritionData =======')
+		console.log(nutritionData);
+		console.log('===== nutritionData =======')
+
+
 		let basicNutritionData : BasicNutritionData = DEFAULT_BASICNUTRITIONDATA;
+
+
 		for(let i = 0; i < nutritionData.length; i++) {
-			let key: string = '';
-			let val: number = -1;
-			let unit: string = 'g';
-			let macro: string = '';
+			let key = '';
+			let val = -1;
+			let unit = 'g';
+			let macro = '';
+			console.log(nutritionData[i]["title"])
 			if(nutritionData[i] && nutritionData[i]["title"] ) {
 				switch (nutritionData[i]["title"]) {
 					case 'Calorie Information':
 						macro = 'calories'
 
 						for (let entry in nutritionData[i]["raw_nutritional_data"]) {
+
 							val = -1;
 							key = '';
-							if (typeof basicNutritionData["calories"] == 'undefined') {
-								basicNutritionData["calories"] = {};
+							// @ts-ignore
+							if (typeof basicNutritionData[macro] == 'undefined') {
+								// @ts-ignore
+								basicNutritionData[macro] = {};
 							}
-							if (nutritionData[i]["raw_nutritional_data"][entry]["name"] == 'Calories') {
-								key = 'total_calories'
-								val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
-							}
+
 							if (nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
 								unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
 							}
+
+							switch(String(nutritionData[i]["raw_nutritional_data"][entry]["name"]).toLowerCase()) {
+								case 'any_calaries_which_needs_modification':
+									key = 'any_calaries_which_needs_modification';
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
+									break;
+								default:
+									key = String(nutritionData[i]["raw_nutritional_data"][entry]["name"]).toLowerCase();
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
+							}
 							if (key != '') {
 								val = convertToGrams(val, unit);
-								basicNutritionData['calories'][key] = val;
+								// @ts-ignore
+								basicNutritionData[macro][key] = val;
 							}
 						}
 						break;
@@ -1493,105 +1526,143 @@ class FoodIntakeTracker {
 						for (let entry in nutritionData[i]["raw_nutritional_data"]) {
 							val = -1;
 							key = '';
-							if (typeof basicNutritionData['carbohydrates'] == 'undefined') {
-								basicNutritionData['carbohydrates'] = {};
+							// @ts-ignore
+							if (typeof basicNutritionData[macro] == 'undefined') {
+								// @ts-ignore
+								basicNutritionData[macro] = {};
 							}
+
 							if (nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
 								unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
 							}
-							switch (nutritionData[i]["raw_nutritional_data"][entry]["name"]) {
-								case 'Total Carbohydrate':
-									key = 'carbohydrates'
-									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
-									break;
-								case 'Dietary Fiber':
-									key = "fiber";
-									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
-									break;
-								case 'Sugars':
-									basicNutritionData['carbohydrates']["sugars"] = nutritionData[i]["raw_nutritional_data"][entry]["value"];
+
+							switch(String(nutritionData[i]["raw_nutritional_data"][entry]["name"]).toLowerCase()) {
+								case 'any_carbohydrate_which_needs_modification':
+									key = 'any_carbohydrate_which_needs_modification';
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
 									break;
 								default:
-							}
-							if (nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
-								unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
+									key = String(nutritionData[i]["raw_nutritional_data"][entry]["name"]).toLowerCase();
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
 							}
 							if (key != '') {
 								val = convertToGrams(val, unit);
-								basicNutritionData['carbohydrates'][key] = val;
+								// @ts-ignore
+								basicNutritionData[macro][key] = val;
 							}
 						}
+						break;
 					case 'Fats & Fatty Acids':
-						macro = 'fats';
+						macro = 'fat';
 						for (let entry in nutritionData[i]["raw_nutritional_data"]) {
 							val = -1;
 							key = '';
 
-							if (typeof basicNutritionData['fats'] == 'undefined') {
-								basicNutritionData['fats'] = {};
+							// @ts-ignore
+							if (typeof basicNutritionData[macro] == 'undefined') {
+								// @ts-ignore
+								basicNutritionData[macro] = {};
 							}
+
 
 							if (nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
 								unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
 							}
-							switch (nutritionData[i]["raw_nutritional_data"][entry]["name"]) {
-								case 'Total Fat':
-									key = 'total_fats';
-									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
+
+							switch(String(nutritionData[i]["raw_nutritional_data"][entry]["name"]).toLowerCase()) {
+								case 'any_fats_which_needs_modification':
+									key = 'any_fats_which_needs_modification';
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
 									break;
-								case 'Saturated Fat':
-									key = 'saturates';
-									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
-									break;
-								case 'Monounsaturated Fat':
-									key = "monounsaturated";
-									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
-									break;
-								case 'Polyunsaturated Fat':
-									key = "polyunsaturated";
-									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
-									break;
-								case 'Total trans fatty acids':
+								case 'total trans fatty acids':
 									key = "transfats";
 									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
 									break;
-								case 'Total Omega-3 fatty acids':
-									key = "omega3";
+
+								case 'Docosahexaenoic n-3 acid (DHA)':
+									key = "dha";
 									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
-									break;
-								case 'Total Omega-6 fatty acids':
-									key = "omega6";
+								case 'epa':
+								case 'dha':
+								case 'dpa':
+									key = "omega-3";
+
 									val = nutritionData[i]["raw_nutritional_data"][entry]["value"];
+									if(basicNutritionData['fats'][key]) {
+										val = Number(val) + Number(basicNutritionData['fats'][key]);
+									}
 									break;
 								default:
-							}
-							if (nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
-								unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
+									key = String(nutritionData[i]["raw_nutritional_data"][entry]["name"]).toLowerCase();
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
 							}
 							if (key != '') {
 								val = convertToGrams(val, unit);
-								basicNutritionData['fats'][key] = val;
+								// @ts-ignore
+								basicNutritionData[macro][key] = val;
 							}
 						}
 						break;
+
 					case 'Protein & Amino Acids':
 						macro = 'protein';
 						for (let entry in nutritionData[i]["raw_nutritional_data"]) {
 							val = -1;
 							key = '';
-							if (typeof basicNutritionData['protein'] == 'undefined') {
-								basicNutritionData['protein'] = {};
+							// @ts-ignore
+							if (typeof basicNutritionData[macro] == 'undefined') {
+								// @ts-ignore
+								basicNutritionData[macro] = {};
 							}
-							if (nutritionData[i]["raw_nutritional_data"][entry]["name"] == 'Protein') {
-								key = 'total_protein';
-								val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
-							}
+
 							if (nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
 								unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
 							}
+
+							switch(String(nutritionData[i]["raw_nutritional_data"][entry]["name"]).toLowerCase()) {
+								case 'any_protein_which_needs_modification':
+									key = 'any_protein_which_needs_modification';
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
+									break;
+								default:
+									key = String(nutritionData[i]["raw_nutritional_data"][entry]["name"]).toLowerCase();
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
+							}
 							if (key != '') {
 								val = convertToGrams(val, unit);
-								basicNutritionData['protein'][key] = val;
+								// @ts-ignore
+								basicNutritionData[macro][key] = val;
+							}
+						}
+						break;
+					case 'Vitamins':
+						macro = 'vitamins';
+						for (let entry in nutritionData[i]["raw_nutritional_data"]) {
+							val = -1;
+							key = '';
+							// @ts-ignore
+							if (typeof basicNutritionData[macro] == 'undefined') {
+								// @ts-ignore
+								basicNutritionData[macro] = {};
+							}
+
+							if (nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
+								unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
+							}
+
+							switch(String(nutritionData[i]["raw_nutritional_data"][entry]["name"]).toLowerCase()) {
+								case 'any_vitamin_which_needs_modification':
+									key = 'any_vitamin_which_needs_modification';
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
+									break;
+								default:
+									key = String(nutritionData[i]["raw_nutritional_data"][entry]["name"]).toLowerCase();
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
+							}
+							if (key != '') {
+								val = convertToGrams(val, unit);
+								// @ts-ignore
+								basicNutritionData[macro][key] = val;
 							}
 						}
 						break;
@@ -1601,18 +1672,28 @@ class FoodIntakeTracker {
 							val = -1;
 							key = '';
 							if (typeof basicNutritionData['minerals'] == 'undefined') {
-								basicNutritionData['minerals'] = {};
+								// @ts-ignore
+								basicNutritionData[macro] = {};
 							}
-							if (nutritionData[i]["raw_nutritional_data"][entry]["name"] == 'Sodium') {
-								key = 'salt';
-								val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
-							}
+
 							if (nutritionData[i]["raw_nutritional_data"][entry]["units"]) {
 								unit = nutritionData[i]["raw_nutritional_data"][entry]["units"];
 							}
+
+							switch(String(nutritionData[i]["raw_nutritional_data"][entry]["name"]).toLowerCase()) {
+								case 'any_mineral_wchich_needs_modification':
+									key = 'any_mineral_wchich_needs_modification';
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
+									break;
+								default:
+									key = String(nutritionData[i]["raw_nutritional_data"][entry]["name"]).toLowerCase();
+									val = nutritionData[i]["raw_nutritional_data"][entry]["value"]
+							}
+
 							if (key != '') {
 								val = convertToGrams(val, unit);
-								basicNutritionData['minerals'][key] = val;
+								// @ts-ignore
+								basicNutritionData[macro][key] = val;
 							}
 						}
 						break;
@@ -1620,6 +1701,8 @@ class FoodIntakeTracker {
 				}
 			}
 		}
+		console.log('====== basicNutritionData ========')
+		console.log(basicNutritionData)
 		return basicNutritionData;
 	}
 
@@ -1797,17 +1880,129 @@ class FoodIntakeTracker {
 	 *
 	 *
 	 */
-	async getMacrosForGivenFoodItem (foodItemName: string) : Promise<FoodMacroData> {
+	async getMacrosForGivenFoodItem (foodItemName: string, amount: number) : Promise<FoodMacroData> {
+		// @ts-ignore
+		function searchJsonKey(jsonObj, searchTerm, returnValueForKey="amount") {
 
+			// @ts-ignore
+			let results = [];
+
+			// @ts-ignore
+			function search(jsonObj, searchTerm, returnValueForKey) {
+				for (const key in jsonObj) {
+					const value = jsonObj[key];
+
+					if (key === searchTerm) {
+						results.push({ key: key, value: value, amount: jsonObj[returnValueForKey] });
+					}
+
+					if (typeof value === 'object') {
+						search(value, searchTerm,returnValueForKey);
+					}
+				}
+			}
+
+			search(jsonObj, searchTerm, returnValueForKey);
+
+			// @ts-ignore
+			return results;
+		}
+
+		// @ts-ignore
+		function searchJsonKeyValuePair(jsonObj, key, values, returnValueForKey, responseType = 'ARRAY' ) {
+			let result;
+
+			for(let j = 0; j < values.length; j++) {
+				let keyValuePairs = searchJsonKey(jsonObj, key, returnValueForKey);
+
+				let out = {};
+				for (let i = 0; i < keyValuePairs.length; i++) {
+
+					if (keyValuePairs[i]["key"] == key && keyValuePairs[i]["value"] == values[j]) {
+						switch ( responseType ) {
+							case 'ARRAY':
+								if (!result) {
+									result = [];
+								}
+								// @ts-ignore
+								out[`${keyValuePairs[i]["value"]}`] = `${keyValuePairs[i][returnValueForKey]}`;
+								result.push(out)
+								break;
+							case 'JSON':
+								if (!result) {
+									result = {};
+								}
+								// @ts-ignore
+								result[`${keyValuePairs[i]["value"]}`] = `${keyValuePairs[i][returnValueForKey]}`;
+								break;
+							default:
+
+						}
+
+					}
+				}
+			}
+			return result;
+		}
 		let foodItemMacro : FoodMacroData = DEFAULT_FOODMACRODATA;
 
 		let fmc = await this.getFoodInventoryItemFrontmatter(foodItemName);
 
 		foodItemMacro.name = foodItemName
-		console.log(fmc);
-		if(fmc["energy"]) {
-			foodItemMacro.calories = fmc["energy"];
+
+		// todo find a better way to enumerate the macros
+		const results = searchJsonKeyValuePair(fmc, "name", ["energy", "protein","carbohydrates","sugar","fiber","fat","saturates", "sodium"], "amount", 'JSON');
+
+		let macrosMapping = [
+			{
+				input: "energy",
+				output: "calories"
+			},
+			{
+				input: "protein",
+				output: "protein"
+			}
+			,
+			{
+				input: "carbohydrates",
+				output: "carbohydrates"
+			},
+			{
+				input: "sugar",
+				output: "sugar"
+			},
+			{
+				input: "fiber",
+				output: "fiber"
+			}
+			,
+			{
+				input: "fat",
+				output: "fat"
+			},
+			{
+				input: "saturates",
+				output: "saturates"
+			}
+			,
+			{
+				input: "sodium",
+				output: "sodium"
+			}
+		]
+		for(let i = 0; i < macrosMapping.length; i++) {
+			// @ts-ignore
+			let macro = macrosMapping[i];
+			// @ts-ignore
+			if (macro && macro["input"] && macro["output"]) {
+				// @ts-ignore
+				foodItemMacro[macro["output"]] = 0.01 * amount * results[macro["input"]];
+			}
 		}
+
+		//console.log('======= foodItemMacro ========')
+		//console.log(foodItemMacro)
+		//console.log('======= foodItemMacro ========')
 		return foodItemMacro;
 	}
 
@@ -1860,7 +2055,8 @@ class FoodIntakeTracker {
 
 		let fmc = await this.getFrontmatterSectionFromFilePath(filePath);
 
-
+console.log('==== FMC RAW =======');
+		console.log(fmc)
 		// TODO find alternative way to do this as EVAL is not safe
 		if(resetOriginalData === true) {
 			eval(`fmc["${foodIntakeFrontmatterRootField}"] = {};`);
@@ -1984,6 +2180,7 @@ class FoodIntakeTracker {
 				});
 			}
 			out = out.split('  ').join(' ');
+
 			return out;
 		}
 		toTAML = function(obj: any, lKeys: any) {
@@ -2023,7 +2220,12 @@ class FoodIntakeTracker {
 			});
 		};
 
+		console.log('===== before YAML =======');
+		console.log(fmc);
+
 		let tmpFMC3 = toTAML(fmc, ['name', 'amount']);
+		console.log('===== after YAML =======');
+		console.log(tmpFMC3);
 
 		if(forceTrimYAML) {
 

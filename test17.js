@@ -23,7 +23,7 @@ const fmc = {
 		},
 		"3": {
 			"name": "sucrose",
-				"amount": 0
+				"amount": 60
 		},
 		"4": {
 			"name": "lactose",
@@ -327,8 +327,8 @@ function searchJsonKey(jsonObj, searchTerm, returnValueForKey="amount") {
 	return results;
 }
 
-function searchJsonKeyValuePair(jsonObj, key, values, returnValueForKey ) {
-	let result = [];
+function searchJsonKeyValuePair(jsonObj, key, values, returnValueForKey, responseType = 'ARRAY' ) {
+	let result;
 
 	for(let j = 0; j < values.length; j++) {
 		let keyValuePairs = searchJsonKey(jsonObj, key, returnValueForKey);
@@ -337,13 +337,28 @@ function searchJsonKeyValuePair(jsonObj, key, values, returnValueForKey ) {
 		for (let i = 0; i < keyValuePairs.length; i++) {
 			console.log(`==>${keyValuePairs[i]["key"]} == ${values[j]} && ${keyValuePairs[i]["value"]} == ${values[j]}`)
 			if (keyValuePairs[i]["key"] == key && keyValuePairs[i]["value"] == values[j]) {
-				out[`${keyValuePairs[i]["value"]}`] = `${keyValuePairs[i][returnValueForKey]}`;
-				result.push(out)
+				switch ( responseType ) {
+					case 'ARRAY':
+						if (!result) {
+							result = [];
+						}
+						out[`${keyValuePairs[i]["value"]}`] = `${keyValuePairs[i][returnValueForKey]}`;
+						result.push(out)
+						break;
+					case 'JSON':
+						if (!result) {
+							result = {};
+						}
+						result[`${keyValuePairs[i]["value"]}`] = `${keyValuePairs[i][returnValueForKey]}`;
+						break;
+					default:
+
+				}
+
 			}
 		}
 	}
 	return result;
-
 }
 
 
@@ -351,6 +366,6 @@ function searchJsonKeyValuePair(jsonObj, key, values, returnValueForKey ) {
 let keyValuePairs = searchJsonKey(fmc, "name", "amount");
 console.log(keyValuePairs);
 
-const results = searchJsonKeyValuePair(fmc, "name", ["energy","vitamin_b7"], "amount");
+const results = searchJsonKeyValuePair(fmc, "name", ["energy", "sucrose","vitamin_b7"], "amount", 'JSON');
 console.log(results);
 
