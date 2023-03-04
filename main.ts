@@ -512,17 +512,17 @@ export default class MyPlugin extends Plugin {
 
 					let foodNutritionData  = await foodIntakeTrackerInstance.getNutritionalData(nutritionDataURL, false, domain);
 
-					console.log('======= foodNutritionData =====')
-					console.log(foodNutritionData)
+					//console.log('======= foodNutritionData =====')
+					//console.log(foodNutritionData)
 
 					fmc = await foodIntakeTrackerInstance.getFoodInventoryItemFrontmatter(activeFile.basename, 'nutritional_information_per_100g');
 
-					console.log('======= fmc  =====')
-					console.log(fmc);
+					//console.log('======= fmc  =====')
+					//console.log(fmc);
 					let fieldsAndValues = foodIntakeTrackerInstance.getFieldValueMapping(foodNutritionData, fmc);
 
-					console.log('======= fieldsAndValues  =====')
-					console.log(fieldsAndValues);
+					//console.log('======= fieldsAndValues  =====')
+					//console.log(fieldsAndValues);
 
 					let fields = fieldsAndValues["fields"];
 					let values = fieldsAndValues["values"];
@@ -862,12 +862,12 @@ class FoodIntakeTracker {
 				}
 			}
 		}
-		console.log('=====>>>  nutritionalInformationFrontMatter <=======')
-		console.log(nutritionalInformationFrontMatter)
-		console.log('=====>>>  nutritionData <=======')
-		console.log(nutritionData)
+		//console.log('=====>>>  nutritionalInformationFrontMatter <=======')
+		//console.log(nutritionalInformationFrontMatter)
+		//console.log('=====>>>  nutritionData <=======')
+		//console.log(nutritionData)
 		let fieldsAndValues = this.walkObject(nutritionalInformationFrontMatter, nutritionalInformationFrontMatter, nutritionData, [], []);
-		console.log(fieldsAndValues);
+		//console.log(fieldsAndValues);
 		return fieldsAndValues;
 	}
 
@@ -1007,7 +1007,7 @@ class FoodIntakeTracker {
 			}
 			try {
 				// @ts-ignore
-				val = parseFloat(String(val).match(/(0.[\d]{1,12})0/gm)[0]);
+				val = parseFloat(String(val).match(/(0\.[\d]{1,12})/gm)[0]);
 			}
 			catch(err) {}
 
@@ -1472,9 +1472,9 @@ class FoodIntakeTracker {
 
 			return val;
 		}
-		console.log('===== nutritionData =======')
-		console.log(nutritionData);
-		console.log('===== nutritionData =======')
+		//console.log('===== nutritionData =======')
+		//console.log(nutritionData);
+		//console.log('===== nutritionData =======')
 
 
 		let basicNutritionData : BasicNutritionData = DEFAULT_BASICNUTRITIONDATA;
@@ -1485,7 +1485,7 @@ class FoodIntakeTracker {
 			let val = -1;
 			let unit = 'g';
 			let macro = '';
-			console.log(nutritionData[i]["title"])
+			//console.log(nutritionData[i]["title"])
 			if(nutritionData[i] && nutritionData[i]["title"] ) {
 				switch (nutritionData[i]["title"]) {
 					case 'Calorie Information':
@@ -1701,8 +1701,8 @@ class FoodIntakeTracker {
 				}
 			}
 		}
-		console.log('====== basicNutritionData ========')
-		console.log(basicNutritionData)
+		//console.log('====== basicNutritionData ========')
+		//console.log(basicNutritionData)
 		return basicNutritionData;
 	}
 
@@ -1745,7 +1745,7 @@ class FoodIntakeTracker {
 	 * @param sourceURL
 	 */
 	async getNutritionalData (sourceURL: string, includeRawHTML: boolean = false, domain: string) : Promise<PageExtractData> {
-
+		//console.log(`getNutritionalData (sourceURL:${sourceURL}, includeRawHTML: ${includeRawHTML}, domain:${domain})`)
 		let pageData: PageExtractData = {	url: '',
 			status: '',
 			title: '',
@@ -1848,6 +1848,9 @@ class FoodIntakeTracker {
 				break;
 			default:
 		}
+		//console.log('======== RAW DATA =========');
+		//console.log(pageData["raw_nutritional_data"]);
+		//console.log('======== RAW DATA =========');
 
 		let fullNutritionalData;
 		switch (domain) {
@@ -2055,8 +2058,8 @@ class FoodIntakeTracker {
 
 		let fmc = await this.getFrontmatterSectionFromFilePath(filePath);
 
-console.log('==== FMC RAW =======');
-		console.log(fmc)
+		//console.log('==== FMC RAW =======');
+		//console.log(fmc)
 		// TODO find alternative way to do this as EVAL is not safe
 		if(resetOriginalData === true) {
 			eval(`fmc["${foodIntakeFrontmatterRootField}"] = {};`);
@@ -2220,12 +2223,12 @@ console.log('==== FMC RAW =======');
 			});
 		};
 
-		console.log('===== before YAML =======');
-		console.log(fmc);
+		//console.log('===== before YAML =======');
+		//console.log(fmc);
 
 		let tmpFMC3 = toTAML(fmc, ['name', 'amount']);
-		console.log('===== after YAML =======');
-		console.log(tmpFMC3);
+		//console.log('===== after YAML =======');
+		//console.log(tmpFMC3);
 
 		if(forceTrimYAML) {
 
@@ -2301,8 +2304,8 @@ console.log('==== FMC RAW =======');
 
 		foodIntakeData = this.getCurrentNoteFoodIntakeData();
 
-		console.log(' ===== foodIntakeData  =======')
-		console.log(foodIntakeData);
+		//console.log(' ===== foodIntakeData  =======')
+		//console.log(foodIntakeData);
 
 		const activeFile = this.app.workspace.getActiveFile();
 
@@ -2321,8 +2324,8 @@ console.log('==== FMC RAW =======');
 				keysIdx++;
 			}
 		}
-		console.log('============ VALUES ============');
-		console.log(values);
+		//console.log('============ VALUES ============');
+		//console.log(values);
 
 		if (activeFile && activeFile.path) {
 			entriesUpdatedCount = await this.updateFrontmatterFoodIntakeProperty(activeFile.path, fields, values, foodTrackerFrontmatterAnchor, true, true);
