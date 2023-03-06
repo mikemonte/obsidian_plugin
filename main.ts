@@ -1954,7 +1954,7 @@ class FoodIntakeTracker {
 		foodItemMacro.name = foodItemName
 
 		// todo find a better way to enumerate the macros
-		const results = searchJsonKeyValuePair(fmc, "name", ["energy", "protein","carbohydrates","sugar","fiber","fat","saturates", "sodium"], "amount", 'JSON');
+		const results = searchJsonKeyValuePair(fmc, "name", ["energy", "protein","carbohydrates","sugar","fiber","fat","saturates", "sodium","potassium","magnesium"], "amount", 'JSON');
 
 		let macrosMapping = [
 			{
@@ -1991,6 +1991,16 @@ class FoodIntakeTracker {
 			{
 				input: "sodium",
 				output: "sodium"
+			}
+			,
+			{
+				input: "potassium",
+				output: "potassium"
+			}
+			,
+			{
+				input: "magnesium",
+				output: "magnesium"
 			}
 		]
 		for(let i = 0; i < macrosMapping.length; i++) {
@@ -2314,10 +2324,12 @@ class FoodIntakeTracker {
 
 
 		let keysIdx = 0;
-		for(let f=0; f < (3 * foodIntakeData.length); f++) {
-			fields.push(`["${foodTrackerFrontmatterAnchor}"]["${Math.floor(f / 3)}"]["${keys[keysIdx]}"]`);
-			values.push(foodIntakeData[Math.floor(f / 3)][keysIdx]);
-			if(keysIdx == 2) {
+		let readColumns  = 3;
+
+		for(let f=0; f < (readColumns * foodIntakeData.length); f++) {
+			fields.push(`["${foodTrackerFrontmatterAnchor}"]["${Math.floor(f / readColumns)}"]["${keys[keysIdx]}"]`);
+			values.push(foodIntakeData[Math.floor(f / readColumns)][keysIdx]);
+			if(keysIdx == (readColumns - 1)) {
 				keysIdx = 0;
 			}
 			else {
@@ -2347,11 +2359,13 @@ class FoodIntakeTracker {
 		let foodIntakeData: Array<any> = [];
 		let row = 0;
 		let tmpArr = [];
-		for(let i = 0; i < foodTableDiv.length; i++) {
+		let readColumns = 12;
+		let skipTotals = 1;
+		for(let i = 0; i < (foodTableDiv.length - skipTotals); i++) {
 
 			// @ts-ignore
 			tmpArr.push(foodTableDiv[i].innerText);
-			if(i > 0 && (i+1) == divisible((i+1), 3)) {
+			if(i > 0 && (i+1) == divisible((i+1), readColumns)) {
 				foodIntakeData[row] = tmpArr;
 				tmpArr = [];
 				row++;
