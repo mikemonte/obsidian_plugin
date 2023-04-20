@@ -2009,7 +2009,7 @@ class FoodIntakeTracker {
 			// @ts-ignore
 			if (macro && macro["input"] && macro["output"]) {
 				// @ts-ignore
-				foodItemMacro[macro["output"]] = 0.01 * amount * results[macro["input"]];
+				foodItemMacro[macro["output"]] = Number(parseFloat(String(0.01 * amount * results[macro["input"]])).toFixed(2));
 			}
 		}
 
