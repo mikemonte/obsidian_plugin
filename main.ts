@@ -39,6 +39,7 @@ interface MyPluginSettings {
 	glossaryTesterPrioritizeCardsOlderThanDays: number;
 	glossaryTestTagsToFilter: string;
 	freestyleTestTagsToFilter: string;
+	freestyleRandomOffset: number;
 	freestyleTesterCardsPerSession: number;
 	freestyleTesterPrioritizeCardsOlderThanDays: number;
 	findReplaceTagsToFilter: string;
@@ -54,6 +55,7 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 	glossaryTesterPrioritizeCardsOlderThanDays: 10,
 	glossaryTestTagsToFilter: "",
 	freestyleTestTagsToFilter: "",
+	freestyleRandomOffset: 0,
 	freestyleTesterCardsPerSession: 15,
 	freestyleTesterPrioritizeCardsOlderThanDays: 10,
 	findReplaceTagsToFilter: "",
@@ -2410,6 +2412,20 @@ class GlossaryTester extends Modal {
 	}
 
 	/**
+	 * set random start offset
+	 */
+	set freestyleRandomOffset(value): number {
+		this._freestyleRandomOffset = value;
+	}
+
+	/**
+	 * get random start offset
+	 */
+	get freestyleRandomOffset(): number {
+		return this._freestyleRandomOffset;
+	}
+
+	/**
 	 * set comma delimited list of tags that wil be used to filter out notes for glossary testing
 	 */
 	set glossaryTestTagsToFilter(value: string) {
@@ -2429,7 +2445,6 @@ class GlossaryTester extends Modal {
 	set currentQuestionNumber(value: number) {
 		this._currentQuestionNumber = value;
 	}
-
 
 
 	get sessionCardsAttemptedCount(): number {
@@ -2608,10 +2623,19 @@ class GlossaryTester extends Modal {
 	 */
 	private _freestyleTestTagsToFilter: string = 'freestyletest';
 
+
 	/**
 	 * the number of the card that is currently visible
 	 */
 	private _currentQuestionNumber: number = 0;
+
+
+	/**
+	 * The number of random records to skip
+	 *
+	 * @private
+	 */
+	private _freestyleRandomOffset: number = 0;
 
 	constructor(app: App, filterableFrontMatter:  Array<string> , headerNames: Array<string>, trainingMode: string = 'GLOSSARY') {
 		super(app);
@@ -2631,6 +2655,8 @@ class GlossaryTester extends Modal {
 		this.glossaryTestTagsToFilter = mikielPluginSettings.plugin.settings.glossaryTestTagsToFilter;
 
 		this.freestyleTestTagsToFilter = mikielPluginSettings.plugin.settings.freestyleTestTagsToFilter;
+
+		this.freestyleRandomOffset = mikielPluginSettings.plugin.settings.freestyleRandomOffset;
 	}
 
 	/**
@@ -3918,8 +3944,9 @@ class GlossaryTester extends Modal {
 		let tmpDefs = [...definitions];
 
 		tmpDefs = sortByKey(tmpDefs, 'priority', 'DESCENDING');
-
-		pickedDefinitions = tmpDefs.slice(0, (cardsToShow));
+		let offset = this.freestyleRandomOffset;
+		console.log(`offset=${this.freestyleRandomOffset}`)
+		pickedDefinitions = tmpDefs.slice(offset, (offset + cardsToShow));
 
 		return pickedDefinitions;
 	}
@@ -4298,6 +4325,17 @@ class SampleSettingTab extends PluginSettingTab {
 				.onChange(async (value: string) => {
 
 					this.plugin.settings.freestyleTestTagsToFilter = String(value);
+					await this.plugin.saveSettings();
+				}));
+		new Setting(containerEl)
+			.setName('Randomly genarated Offset from wher glossary workd are picked ')
+			.setDesc('This number will offset the cards to creeate further randomisation.')
+			.addText(textArea => textArea
+				.setPlaceholder('offset from start, use 0 to always start from beginning')
+				.setValue(String(this.plugin.settings.freestyleRandomOffset))
+				.onChange(async (value: string) => {
+
+					this.plugin.settings.freestyleRandomOffset = parseInt(value);
 					await this.plugin.saveSettings();
 				}));
 		containerEl.createEl('h2', {text: 'Frontmatter Find & Replace Settings'});
