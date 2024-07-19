@@ -200,6 +200,23 @@ const DEFAULT_FOODITEM: FoodItem = {
 	quantity: 0
 }
 
+interface ExcalidrawRawData {
+	fileName: string;
+	fileContent: string;
+	jsonContent: object;
+	headerContent: string;
+	footerContent: string;
+}
+
+
+const DEFAULT_EXCALIDRAWDATA: ExcalidrawRawData = {
+	fileName: '',
+	fileContent: '',
+	jsonContent: {},
+	headerContent: '',
+	footerContent: ''
+}
+
 class MikielAPI {
 	/**
 	 * retrieve the instance of class FoodIntakeTracker
@@ -231,6 +248,116 @@ class MikielAPI {
 		this._app = app;
 		this.foodIntakeTrackerInstance = new FoodIntakeTracker(this.app);
 	}
+
+
+	/**
+	 * modifyExcalidrawFile
+	 *
+	 * @param excalidrawFileName : full path to the excalidraw file
+	 * (example: media/Excalidraw/Shoulder Press Exercise Machine Neutral Grip 2024-07.excalidraw.md)
+	 *
+	 *
+	 *
+	 * @param elementsToModify : Array of objects representing required changes. Example:
+	 * The following modifier will change the opacity of element 1 (elements are base 0) as
+	 * well as teh width of element 3
+	 * [
+	 * {
+	 * elementIndex: 1,
+	 * opacity: 35
+	 * },
+	 * {
+	 * elementIndex: 3,
+	 * width: 233
+	 * }
+	 * ]
+	 *
+	 *
+	 */
+	async modifyExcalidrawFile(excalidrawFileName: string, elementsToModify: Array<object>) : Promise<boolean> {
+		let outcome = true;
+		let rawData = await this.getRawExcalidrawFile(excalidrawFileName);
+		let jsonObj = rawData["jsonContent"];
+
+		// Build an index of element IDs
+		let eleMap = [];
+		// @ts-ignore
+		const elemCount = jsonObj["elements"].length;
+		for ( let j = 0; j < elemCount; j++) {
+			// @ts-ignore
+		 	eleMap[jsonObj["elements"][j]["id"]] = j;
+		}
+		console.log("========== eleMap ========");
+		console.log(eleMap);
+		console.log("========== eleMap ========");
+
+		for ( let j = 0; j < elementsToModify.length; j++) {
+			let curElement = elementsToModify[j];
+
+			// @ts-ignore
+			if(curElement["elementIndex"] && jsonObj.hasOwnProperty("elements")) {
+			   // @ts-ignore
+				let ks = Object.keys(curElement);
+				console.log(ks);
+				for(let i = 0 ; i < ks.length; i++) {
+					if(ks[i] != 'elementIndex') {
+						// @ts-ignore
+						const idx = eleMap[curElement["elementIndex"]] ;
+						console.log(`idx=${idx}`)
+						// @ts-ignore
+						//console.log(`${ks[i]}===>${curElement[ks[i]]}`);
+						// @ts-ignore
+						//jsonObj["elements"][curElement["elementIndex"]][ks[i]] = curElement[ks[i]];
+						// @ts-ignore
+						jsonObj["elements"][idx][ks[i]] = curElement[ks[i]];
+					}
+				}
+			}
+
+		}
+
+		const jsonStr = JSON.stringify(jsonObj);
+
+		const newFileContent = `${rawData["headerContent"]}\n\`\`\`json\n${jsonStr}\n\`\`\`${rawData["footerContent"]}`;
+
+
+		console.log("========== JSON ========");
+		console.log(newFileContent);
+		console.log("========== JSON ========");
+
+		const tmpOutputPath = excalidrawFileName; // Use this for testing -> "media/Excalidraw/My New Output.excalidraw.md";
+		const outputFilePath = this.app.vault.getAbstractFileByPath(tmpOutputPath);
+		await this.app.vault.modify(outputFilePath, newFileContent);
+		return outcome;
+	}
+
+	/**
+	 * getRawExcalidrawFile
+	 * returns a json object representing the excalidraw svg
+	 * {
+	 *    name: test
+	 * }
+	 *
+	 * @param excalidrawFileName: ful path to the .excalidraw file
+
+	 */
+	async getRawExcalidrawFile(excalidrawFileName: string) : Promise<ExcalidrawRawData> {
+
+		const fileContent = await this.readTextFromFilePath(excalidrawFileName);
+		const ar1 = fileContent.split('```json');
+		const ar2 = ar1[1].split('```');
+		const jsonObj = JSON.parse(ar2[0]);
+		let excalRaw = {
+			fileName: excalidrawFileName,
+			fileContent: fileContent,
+			jsonContent: jsonObj,
+			headerContent: ar1[0],
+			footerContent: ar2[1]
+		};
+		return excalRaw;
+	}
+
+
 
 	/**
 	 * getListOfFoodsConsumedOnGivenDate
@@ -310,6 +437,7 @@ class MikielAPI {
 	 * @param filePath
 	 */
 	async readTextFromFilePath(filePath: string) {
+		console.log(`path=${filePath}`)
 
 		let fileContent = 'File not found!';
 		let existingFile = this.app.vault.getAbstractFileByPath(filePath);
